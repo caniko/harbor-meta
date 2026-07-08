@@ -3,39 +3,54 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    flake-utils.url = "github:numtide/flake-utils";
+    flake-parts.url = "github:hercules-ci/flake-parts";
   };
 
-  outputs = {
-    self,
-    nixpkgs,
-    flake-utils,
-    ...
-  }: let
-    lib = import ./lib {inherit nixpkgs;};
-  in
-    {
-      inherit lib;
-    }
-    // flake-utils.lib.eachDefaultSystem (system: let
-      pkgs = import nixpkgs {inherit system;};
-      harborOpencode = import ./nix/harbor-opencode.nix {inherit pkgs lib;};
-    in {
-      packages = {
-        harbor-opencode = harborOpencode;
-        default = harborOpencode;
+  outputs =
+    inputs@{
+      flake-parts,
+      self,
+      nixpkgs,
+      ...
+    }:
+    flake-parts.lib.mkFlake { inherit inputs; } {
+      systems = [ "x86_64-linux" "aarch64-linux" ];
+
+      flake = let
+        lib = import ./lib { inherit nixpkgs; };
+      in {
+        inherit lib;
       };
 
-      apps = {
-        harbor-opencode = {
-          type = "app";
-          program = "${harborOpencode}/bin/harbor-opencode";
+      perSystem =
+        { system, pkgs, ... }:
+        let
+          harborOpencode = import ./nix/harbor-opencode.nix {
+            inherit pkgs;
+            lib = self.lib;
+          };
+        in
+        {
+          packages = {
+            harbor-opencode = harborOpencode;
+            default = harborOpencode;
+          };
+
+          apps = {
+            harbor-opencode = {
+              type = "app";
+              program = "${harborOpencode}/bin/harbor-opencode";
+            };
+            default = self.apps.${system}.harbor-opencode;
+          };
+
+          checks = import ./checks {
+            inherit pkgs;
+            lib = self.lib;
+            inherit harborOpencode;
+          };
+
+          formatter = pkgs.alejandra;
         };
-        default = self.apps.${system}.harbor-opencode;
-      };
-
-      checks = import ./checks {inherit pkgs lib harborOpencode;};
-
-      formatter = pkgs.alejandra;
-    });
+    };
 }
