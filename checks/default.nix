@@ -2,7 +2,53 @@
   pkgs,
   lib,
   harborOpencode,
-}: {
+  nixpkgs,
+}: let
+  merged = lib.devShell.merge [
+    {
+      packages = [pkgs.hello];
+      env.A = "1";
+      shellHook = "echo a";
+    }
+    {
+      packages = [pkgs.jq];
+      env.A = "2";
+      shellHook = "echo b";
+    }
+  ];
+  helloShell = lib.devShell.mkShell {
+    inherit pkgs;
+    packages = [pkgs.hello];
+    env.HELLO_SHELL = "1";
+    extraShellHook = "true";
+  };
+in
+  assert merged.env.A == "2";
+  assert builtins.length merged.packages == 2;
+  assert pkgs.lib.hasInfix "echo a" merged.shellHook;
+  assert pkgs.lib.hasInfix "echo b" merged.shellHook; {
+  dev-shell-hello = lib.devShellTests.mkCheck {
+    inherit pkgs;
+    name = "meta-harbor-dev-shell-hello";
+    shell = helloShell;
+    commands = ["hello"];
+    env.HELLO_SHELL = "1";
+    hookContains = ["true"];
+    runHook = true;
+  };
+
+  stub-template = lib.templateTests.mkCheck {
+    inherit pkgs;
+    inherit (pkgs.stdenv.hostPlatform) system;
+    flakeNix = ../tests/fixtures/stub-template/flake.nix;
+    inputs = {inherit nixpkgs;};
+    requiredFiles = ["flake.nix"];
+    commands = ["hello"];
+    env.STUB_SHELL = "1";
+    hookContains = ["echo stub"];
+    inherit (lib) devShellTests;
+  };
+
   opencode-configs = pkgs.runCommand "meta-harbor-opencode-configs" {} ''
     cat > rust.json <<'EOF'
     ${lib.opencode.configText "rust"}

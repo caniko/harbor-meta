@@ -45,7 +45,7 @@
           };
 
           checks = import ./checks {
-            inherit pkgs;
+            inherit pkgs nixpkgs;
             lib = self.lib;
             inherit harborOpencode;
           };
