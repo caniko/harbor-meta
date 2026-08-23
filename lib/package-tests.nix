@@ -267,17 +267,17 @@ in rec {
     unsupportedBuilderReason ? null,
   }:
     assert lib.assertMsg (builtins.elem kind supportedArtifactBuilderKinds)
-    "meta-harbor.packageTests.mkArtifactBuilder: unsupported kind `${kind}`";
+    "harbor-meta.packageTests.mkArtifactBuilder: unsupported kind `${kind}`";
     assert lib.assertMsg (validPackageName packageName)
-    "meta-harbor.packageTests.mkArtifactBuilder: packageName must be non-empty and package-like";
+    "harbor-meta.packageTests.mkArtifactBuilder: packageName must be non-empty and package-like";
     assert lib.assertMsg (validVersion version)
-    "meta-harbor.packageTests.mkArtifactBuilder: version must be a non-empty string";
+    "harbor-meta.packageTests.mkArtifactBuilder: version must be a non-empty string";
     assert lib.assertMsg (builtins.isString output && output != "")
-    "meta-harbor.packageTests.mkArtifactBuilder: output must be a non-empty string";
+    "harbor-meta.packageTests.mkArtifactBuilder: output must be a non-empty string";
     assert lib.assertMsg (validNullableCommand buildCommand)
-    "meta-harbor.packageTests.mkArtifactBuilder: buildCommand must be null or a non-empty string";
+    "harbor-meta.packageTests.mkArtifactBuilder: buildCommand must be null or a non-empty string";
     assert lib.assertMsg (validInputs inputs)
-    "meta-harbor.packageTests.mkArtifactBuilder: inputs must be a list"; {
+    "harbor-meta.packageTests.mkArtifactBuilder: inputs must be a list"; {
       inherit kind packageName version output buildCommand inputs metadata unsupportedBuilderReason;
       ref = "${kind}:${packageName}:${version}";
       hierarchy = artifactBuilderHierarchy kind;
@@ -294,19 +294,19 @@ in rec {
     metadata ? {},
   }:
     assert lib.assertMsg (builtins.elem kind supportedRunnerBuilderKinds)
-    "meta-harbor.packageTests.mkRunnerBuilder: unsupported kind `${kind}`";
+    "harbor-meta.packageTests.mkRunnerBuilder: unsupported kind `${kind}`";
     assert lib.assertMsg (validPackageName packageName)
-    "meta-harbor.packageTests.mkRunnerBuilder: packageName must be non-empty and package-like";
+    "harbor-meta.packageTests.mkRunnerBuilder: packageName must be non-empty and package-like";
     assert lib.assertMsg (builtins.isAttrs plan && plan ? kind && plan ? packageName)
-    "meta-harbor.packageTests.mkRunnerBuilder: plan must be a package test plan";
+    "harbor-meta.packageTests.mkRunnerBuilder: plan must be a package test plan";
     assert lib.assertMsg (builtins.isString runner && runner != "")
-    "meta-harbor.packageTests.mkRunnerBuilder: runner must be a non-empty string";
+    "harbor-meta.packageTests.mkRunnerBuilder: runner must be a non-empty string";
     assert lib.assertMsg (environment == null || (builtins.isString environment && environment != ""))
-    "meta-harbor.packageTests.mkRunnerBuilder: environment must be null or a non-empty string";
+    "harbor-meta.packageTests.mkRunnerBuilder: environment must be null or a non-empty string";
     assert lib.assertMsg (validNullableCommand prepareCommand)
-    "meta-harbor.packageTests.mkRunnerBuilder: prepareCommand must be null or a non-empty string";
+    "harbor-meta.packageTests.mkRunnerBuilder: prepareCommand must be null or a non-empty string";
     assert lib.assertMsg (validNullableCommand testCommand)
-    "meta-harbor.packageTests.mkRunnerBuilder: testCommand must be null or a non-empty string"; {
+    "harbor-meta.packageTests.mkRunnerBuilder: testCommand must be null or a non-empty string"; {
       inherit kind packageName plan runner environment prepareCommand testCommand metadata;
       ref = "${kind}:${packageName}:${plan.kind}";
       hierarchy =
@@ -327,19 +327,19 @@ in rec {
     builder ? null,
   }:
     assert lib.assertMsg (builtins.elem kind supportedKinds)
-    "meta-harbor.packageTests.mkPlan: unsupported kind `${kind}`";
+    "harbor-meta.packageTests.mkPlan: unsupported kind `${kind}`";
     assert lib.assertMsg (validPackageName packageName)
-    "meta-harbor.packageTests.mkPlan: packageName must be non-empty and package-like";
+    "harbor-meta.packageTests.mkPlan: packageName must be non-empty and package-like";
     assert lib.assertMsg (validVersion version)
-    "meta-harbor.packageTests.mkPlan: version must be a non-empty string";
+    "harbor-meta.packageTests.mkPlan: version must be a non-empty string";
     assert lib.assertMsg (validArtifacts artifacts)
-    "meta-harbor.packageTests.mkPlan: artifacts must be a non-empty list of { name, path }";
+    "harbor-meta.packageTests.mkPlan: artifacts must be a non-empty list of { name, path }";
     assert lib.assertMsg (validInstall install)
-    "meta-harbor.packageTests.mkPlan: install must include a non-empty command";
+    "harbor-meta.packageTests.mkPlan: install must include a non-empty command";
     assert lib.assertMsg (validVerify verify)
-    "meta-harbor.packageTests.mkPlan: verify entries must include non-empty commands";
+    "harbor-meta.packageTests.mkPlan: verify entries must include non-empty commands";
     assert lib.assertMsg (builder == null || (builtins.isAttrs builder && builder ? kind && builder ? output))
-    "meta-harbor.packageTests.mkPlan: builder must be null or an artifact builder"; let
+    "harbor-meta.packageTests.mkPlan: builder must be null or an artifact builder"; let
       testHierarchy =
         if kind == "chocolatey-vagrant"
         then ["generic" "windows" "chocolatey-vagrant"]
@@ -368,9 +368,9 @@ in rec {
     builder ? null,
   }:
     assert lib.assertMsg (builtins.isString installPowerShell && installPowerShell != "")
-    "meta-harbor.packageTests.mkWindowsPlan: installPowerShell must be non-empty";
+    "harbor-meta.packageTests.mkWindowsPlan: installPowerShell must be non-empty";
     assert lib.assertMsg (builtins.isList verifyPowerShell && lib.all (step: builtins.isString step && step != "") verifyPowerShell)
-    "meta-harbor.packageTests.mkWindowsPlan: verifyPowerShell must be a list of non-empty strings";
+    "harbor-meta.packageTests.mkWindowsPlan: verifyPowerShell must be a list of non-empty strings";
       mkPlan {
         kind = "windows";
         inherit packageName version artifacts runtime metadata builder;
@@ -404,17 +404,17 @@ in rec {
     builder ? null,
   }:
     assert lib.assertMsg (validChocolateyName packageName)
-    "meta-harbor.packageTests.mkChocolateyVagrantPlan: packageName must match Chocolatey id rules";
+    "harbor-meta.packageTests.mkChocolateyVagrantPlan: packageName must match Chocolatey id rules";
     assert lib.assertMsg (builtins.isString nupkg && nupkg != "")
-    "meta-harbor.packageTests.mkChocolateyVagrantPlan: nupkg must be a non-empty path string";
+    "harbor-meta.packageTests.mkChocolateyVagrantPlan: nupkg must be a non-empty path string";
     assert lib.assertMsg (validWindowsPath source)
-    "meta-harbor.packageTests.mkChocolateyVagrantPlan: source must be an absolute Windows path like C:\\packages";
+    "harbor-meta.packageTests.mkChocolateyVagrantPlan: source must be an absolute Windows path like C:\\packages";
     assert lib.assertMsg (builtins.elem provider ["virtualbox" "hyperv"])
-    "meta-harbor.packageTests.mkChocolateyVagrantPlan: provider must be virtualbox or hyperv";
+    "harbor-meta.packageTests.mkChocolateyVagrantPlan: provider must be virtualbox or hyperv";
     assert lib.assertMsg (builtins.isList installArgs && lib.all builtins.isString installArgs)
-    "meta-harbor.packageTests.mkChocolateyVagrantPlan: installArgs must be a list of strings";
+    "harbor-meta.packageTests.mkChocolateyVagrantPlan: installArgs must be a list of strings";
     assert lib.assertMsg (builtins.isList verifyPowerShell && lib.all (step: builtins.isString step && step != "") verifyPowerShell)
-    "meta-harbor.packageTests.mkChocolateyVagrantPlan: verifyPowerShell must be a list of non-empty strings";
+    "harbor-meta.packageTests.mkChocolateyVagrantPlan: verifyPowerShell must be a list of non-empty strings";
       mkPlan {
         kind = "chocolatey-vagrant";
         inherit packageName version builder;
@@ -460,7 +460,7 @@ in rec {
           planJsonPath = planJson;
           vagrantfilePath = vagrantfile;
         }
-      else throw "meta-harbor.packageTests.mkPackageTestRunner: no runnable backend for kind `${plan.kind}`";
+      else throw "harbor-meta.packageTests.mkPackageTestRunner: no runnable backend for kind `${plan.kind}`";
     runnerBuilder = mkRunnerBuilder {
       kind = "chocolatey-vagrant-runner-builder";
       packageName = plan.packageName;
@@ -487,11 +487,11 @@ in rec {
     runnerBuilder ? null,
   }:
     assert lib.assertMsg (builtins.isAttrs artifactBuilder && artifactBuilder ? kind && artifactBuilder ? output)
-    "meta-harbor.packageTests.mkBuildTestBundle: artifactBuilder must be an artifact builder";
+    "harbor-meta.packageTests.mkBuildTestBundle: artifactBuilder must be an artifact builder";
     assert lib.assertMsg (builtins.isAttrs plan && plan ? kind && plan ? artifacts)
-    "meta-harbor.packageTests.mkBuildTestBundle: plan must be a package test plan";
+    "harbor-meta.packageTests.mkBuildTestBundle: plan must be a package test plan";
     assert lib.assertMsg (runnerBuilder == null || (builtins.isAttrs runnerBuilder && runnerBuilder ? kind && runnerBuilder ? runner))
-    "meta-harbor.packageTests.mkBuildTestBundle: runnerBuilder must be null or a runner builder"; {
+    "harbor-meta.packageTests.mkBuildTestBundle: runnerBuilder must be null or a runner builder"; {
       inherit artifactBuilder plan runnerBuilder;
       hierarchy =
         (

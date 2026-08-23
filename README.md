@@ -1,8 +1,8 @@
-# meta-harbor
+# harbor-meta
 
 Shared harbor helpers for editor and agent tooling.
 
-`meta-harbor` owns cross-language policy shared by the language harbors.
+`harbor-meta` owns cross-language policy shared by the language harbors.
 
 Dev shells are fragments `{ packages, env, shellHook }`. Language harbors merge
 those fragments and render them with `lib.devShell.mkShell` (`pkgs.mkShell` by

@@ -29,7 +29,7 @@
     then pythonLsp
     else if kind == "mixed"
     then rustLsp // pythonLsp
-    else throw "meta-harbor.opencode: unsupported kind `${kind}`";
+    else throw "harbor-meta.opencode: unsupported kind `${kind}`";
 
   configForKind = kind: {
     "$schema" = schema;
@@ -52,9 +52,9 @@ in rec {
     then [pkgs.basedpyright pkgs.ruff]
     else if kind == "mixed"
     then [pkgs.nixd pkgs.taplo pkgs.basedpyright pkgs.ruff]
-    else throw "meta-harbor.opencode: unsupported kind `${kind}`";
+    else throw "harbor-meta.opencode: unsupported kind `${kind}`";
 
   checkKind = kind:
     lib.assertMsg (builtins.elem kind supportedKinds)
-    "meta-harbor.opencode: kind must be one of ${lib.concatStringsSep ", " supportedKinds}, got `${kind}`";
+    "harbor-meta.opencode: kind must be one of ${lib.concatStringsSep ", " supportedKinds}, got `${kind}`";
 }

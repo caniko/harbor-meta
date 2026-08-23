@@ -29,7 +29,7 @@ in
   assert pkgs.lib.hasInfix "echo b" merged.shellHook; {
   dev-shell-hello = lib.devShellTests.mkCheck {
     inherit pkgs;
-    name = "meta-harbor-dev-shell-hello";
+    name = "harbor-meta-dev-shell-hello";
     shell = helloShell;
     commands = ["hello"];
     env.HELLO_SHELL = "1";
@@ -49,7 +49,7 @@ in
     inherit (lib) devShellTests;
   };
 
-  opencode-configs = pkgs.runCommand "meta-harbor-opencode-configs" {} ''
+  opencode-configs = pkgs.runCommand "harbor-meta-opencode-configs" {} ''
     cat > rust.json <<'EOF'
     ${lib.opencode.configText "rust"}
     EOF
@@ -66,7 +66,7 @@ in
     echo ok > $out/result
   '';
 
-  harbor-opencode-sync-check = pkgs.runCommand "meta-harbor-opencode-sync-check" {} ''
+  harbor-opencode-sync-check = pkgs.runCommand "harbor-meta-opencode-sync-check" {} ''
     export PATH=${harborOpencode}/bin:$PATH
     mkdir -p project
     touch project/Cargo.toml
@@ -122,7 +122,7 @@ in
     assert w.hierarchy == ["generic" "windows" "windows"];
     assert c.builderRef == builder.ref;
     assert c.hierarchy == ["generic-builder" "windows-builder" "chocolatey-builder" "generic" "windows" "chocolatey-vagrant"];
-      pkgs.runCommand "meta-harbor-package-tests-plan-shape" {} ''
+      pkgs.runCommand "harbor-meta-package-tests-plan-shape" {} ''
         mkdir -p $out
         echo ok > $out/result
       '';
@@ -169,7 +169,7 @@ in
     assert !badKind.success;
     assert !badChoco.success;
     assert !badSource.success;
-      pkgs.runCommand "meta-harbor-package-tests-validation" {} ''
+      pkgs.runCommand "harbor-meta-package-tests-validation" {} ''
         mkdir -p $out
         echo ok > $out/result
       '';
@@ -203,7 +203,7 @@ in
     assert pkgs.lib.hasInfix "choco install demo --version 1.0.0 --source C:\\packages" vagrantfile;
     assert rendered.runnerBuilder.kind == "chocolatey-vagrant-runner-builder";
     assert bundle.hierarchy == ["generic-builder" "windows-builder" "chocolatey-builder" "generic" "windows" "chocolatey-vagrant" "generic-runner-builder" "chocolatey-vagrant-runner-builder"];
-      pkgs.runCommand "meta-harbor-package-tests-chocolatey-vagrant-render" {} ''
+      pkgs.runCommand "harbor-meta-package-tests-chocolatey-vagrant-render" {} ''
         test -f ${rendered.planJson}
         test -x ${rendered.runner}/bin/package-test-demo
         grep -q '"kind":"chocolatey-vagrant"' ${rendered.planJson}

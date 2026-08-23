@@ -61,8 +61,8 @@
       [ -f "$dir/pyproject.toml" ] && has_python=1
 
       if [ -f "$dir/flake.nix" ]; then
-        grep -Eq 'rs-harbor|mkDevShell|mkDevShells' "$dir/flake.nix" && has_rust=1
-        grep -Eq 'py-harbor|mkUvDevShell|mkUvDevShells' "$dir/flake.nix" && has_python=1
+        grep -Eq 'harbor-rs|rs-harbor|mkDevShell|mkDevShells' "$dir/flake.nix" && has_rust=1
+        grep -Eq 'harbor-py|py-harbor|mkUvDevShell|mkUvDevShells' "$dir/flake.nix" && has_python=1
       fi
 
       if [ "$has_rust" -eq 1 ] && [ "$has_python" -eq 1 ]; then
@@ -144,7 +144,7 @@
       find "$scan_root" -mindepth 1 -maxdepth 3 -name flake.nix -print | while IFS= read -r flake; do
         local dir
         dir="$(dirname "$flake")"
-        if grep -Eq 'rs-harbor|py-harbor' "$flake"; then
+        if grep -Eq 'harbor-rs|harbor-py' "$flake"; then
           if [ "$check_only" -eq 1 ]; then
             kind=detect check_one "$dir"
           else

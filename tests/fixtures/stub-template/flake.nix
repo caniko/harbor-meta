@@ -1,5 +1,5 @@
 {
-  description = "meta-harbor stub template";
+  description = "harbor-meta stub template";
 
   outputs = {
     self,
