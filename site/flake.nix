@@ -6,7 +6,6 @@
 
     plinth = {
       url = "git+https://github.com/caniko/plinth.git?ref=refs/heads/feat/project-grid&rev=0aa872f77613a0827e25b0a47be2b5f76d57d393";
-      inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
