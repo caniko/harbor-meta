@@ -948,22 +948,6 @@
         "type": "github"
       }
     },
-    "nixpkgs_plinth": {
-      "locked": {
-        "lastModified": 1772736753,
-        "narHash": "sha256-au/m3+EuBLoSzWUCb64a/MZq6QUtOV8oC0D9tY2scPQ=",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "917fec990948658ef1ccd07cef2a1ef060786846",
-        "type": "github"
-      },
-      "original": {
-        "owner": "NixOS",
-        "ref": "nixpkgs-unstable",
-        "repo": "nixpkgs",
-        "type": "github"
-      }
-    },
     "nixpkgs-lib": {
       "locked": {
         "lastModified": 1785031560,
@@ -1116,6 +1100,22 @@
         "type": "github"
       }
     },
+    "nixpkgs_4": {
+      "locked": {
+        "lastModified": 1785542685,
+        "narHash": "sha256-sjfvXMbG5pCFgpvw2OZAFcZiTvrppCWvnB6cuGrSY08=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "f8e81fc7eb063db454f563cdd596fb96a5ad1497",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "f8e81fc7eb063db454f563cdd596fb96a5ad1497",
+        "type": "github"
+      }
+    },
     "osxcross": {
       "inputs": {
         "flake-utils": "flake-utils_4",
@@ -1249,7 +1249,7 @@
         "flake-parts": "flake-parts",
         "nix-cache-pin": "nix-cache-pin",
         "nix-pklx": "nix-pklx",
-        "nixpkgs": "nixpkgs_plinth",
+        "nixpkgs": "nixpkgs_4",
         "rs-harbor": "rs-harbor_5",
         "rust-overlay": "rust-overlay_6"
       },
