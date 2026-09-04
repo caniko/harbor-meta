@@ -1,6 +1,7 @@
 {nixpkgs}: let
   nixLib = nixpkgs.lib;
 in {
+  flake = import ./flake.nix {lib = nixLib;};
   opencode = import ./opencode.nix {lib = nixLib;};
   packageTests = import ./package-tests.nix {lib = nixLib;};
   devShell = import ./shell.nix {lib = nixLib;};
