@@ -7,7 +7,7 @@
   tomlOnly = (treefmt-nix.lib.evalModule pkgs {imports = [modules.toml];}).config;
   composed =
     (treefmt-nix.lib.evalModule pkgs {
-      imports = [modules.nix modules.toml modules.nix];
+      imports = [modules.nix modules.toml];
       projectRootFile = "flake.nix";
       settings.excludes = ["generated/**"];
     }).config;
@@ -17,6 +17,8 @@
       projectRootFile = "flake.nix";
       settings.excludes = ["generated/**"];
     }).config;
+  unformattedNix = pkgs.writeText "unformatted.nix" "{ x=1; }\n";
+  unformattedToml = pkgs.writeText "unformatted.toml" "x=1\n";
 in
   assert builtins.attrNames nixOnly.settings.formatter == ["alejandra"];
   assert builtins.attrNames tomlOnly.settings.formatter == ["taplo"];
@@ -24,15 +26,16 @@ in
     pkgs.runCommand "harbor-meta-treefmt-modules" {
       nativeBuildInputs = [composed.build.wrapper];
     } ''
-        export HOME="$TMPDIR/home"
-        mkdir -p "$HOME" generated
-        cp ${pkgs.writeText "unformatted.nix" "{ x=1; }\n"} flake.nix
-        cp ${pkgs.writeText "unformatted.toml" "x=1\n"} sample.toml
-        cp flake.nix generated/skip.nix
-        chmod -R u+w .
-        treefmt --tree-root . flake.nix sample.toml generated/skip.nix
-        ! cmp -s flake.nix generated/skip.nix
-        cmp ${pkgs.writeText "unformatted.nix" "{ x=1; }\n"} generated/skip.nix
-      treefmt --tree-root . --clear-cache --fail-on-change flake.nix sample.toml generated/skip.nix
-        touch "$out"
+      export HOME="$TMPDIR/home"
+      mkdir -p "$HOME" generated
+      cp ${unformattedNix} flake.nix
+      cp ${unformattedToml} sample.toml
+      cp flake.nix generated/skip.nix
+      chmod -R u+w .
+      treefmt --walk filesystem
+      ! cmp -s ${unformattedNix} flake.nix
+      ! cmp -s ${unformattedToml} sample.toml
+      cmp ${unformattedNix} generated/skip.nix
+      treefmt --walk filesystem --clear-cache --fail-on-change
+      touch "$out"
     ''
