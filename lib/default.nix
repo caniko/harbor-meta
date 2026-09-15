@@ -7,4 +7,5 @@ in {
   devShell = import ./shell.nix {lib = nixLib;};
   devShellTests = import ./dev-shell-tests.nix {lib = nixLib;};
   templateTests = import ./template-tests.nix {lib = nixLib;};
+  treefmtScope = import ./treefmt-scope.nix {lib = nixLib;};
 }

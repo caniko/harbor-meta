@@ -8,6 +8,13 @@
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # Suite-only nightly rustfmt: simit-shaped modules inject the nightly-only
+    # skip_children flag, so the treefmt-scope regression suite cannot run on
+    # stable rustfmt. Pinned by date (overlays only ever add manifests).
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs @ {
@@ -67,6 +74,11 @@
               inherit pkgs;
               inherit (inputs) treefmt-nix;
               modules = self.treefmtModules;
+            };
+            treefmt-scope = import ./checks/treefmt-scope.nix {
+              inherit pkgs system nixpkgs;
+              lib = self.lib;
+              inherit (inputs) treefmt-nix rust-overlay;
             };
           };
 
