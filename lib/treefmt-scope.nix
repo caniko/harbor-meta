@@ -47,21 +47,61 @@
   nestsUnder = root: other:
     other == root || lib.hasPrefix (root + "/") other;
 
-  # Prefix a project-local glob with its workspace-relative path. The empty
-  # relPath (workspace root entry) leaves patterns unchanged.
-  # Bare names (`*.md`) match basenames at any depth, so they need `**/`;
-  # already-rooted or nested patterns keep their shape under the prefix.
-  scopePattern = relPath: pattern:
+  # Prefix a project-local glob with its workspace-relative path, returning
+  # a LIST of patterns. The empty relPath (workspace root entry) leaves
+  # patterns unchanged.
+  #
+  # treefmt v2 matches `**/` against one-or-more directories (verified
+  # empirically: `a/**/*.nix` misses `a/file.nix` but hits `a/sub/file.nix`),
+  # so a bare name like `*.md` must expand to BOTH the direct-child form
+  # (`<rel>/*.md`, top-level files) and the nested form (`<rel>/**/*.md`,
+  # deeper files). Emitting both is also harmless under gitignore semantics,
+  # so excludes use the same expansion.
+  scopePatterns = relPath: pattern:
     if relPath == ""
-    then pattern
+    then [pattern]
     else if pattern == "*"
-    then "${relPath}/**"
+    then ["${relPath}/**"]
     else if lib.hasInfix "/" pattern
     then
       if lib.hasPrefix "/" pattern
-      then "${relPath}${pattern}"
-      else "${relPath}/${pattern}"
-    else "${relPath}/**/${pattern}";
+      then ["${relPath}${pattern}"]
+      else ["${relPath}/${pattern}"]
+    else ["${relPath}/${pattern}" "${relPath}/**/${pattern}"];
+
+  configExtensions = [".toml" ".json" ".yaml" ".yml" ".ini" ".cfg" ".conf"];
+
+  hasConfigExtension = value:
+    lib.any (ext: lib.hasSuffix ext value) configExtensions;
+
+  # An option/command element that resolves against the invocation directory
+  # instead of a file being formatted. Covers ./ and ../ prefixes, bare
+  # config filenames (taplo.toml), and --flag=relative-path spellings.
+  # Absolute paths, flags, globs, and bare executable names are fine.
+  isRelativeRef = element:
+    builtins.isString element
+    && (lib.hasPrefix "./" element
+      || lib.hasPrefix "../" element
+      || element == "."
+      || element == ".."
+      || isBareConfigFilename element
+      || isConfigFlagWithRelativeValue element);
+
+  isBareConfigFilename = element:
+    !(lib.hasPrefix "/" element)
+    && !(lib.hasPrefix "-" element)
+    && !(hasGlobChars element)
+    && hasConfigExtension element;
+
+  isConfigFlagWithRelativeValue = element: let
+    match = builtins.match "--[A-Za-z0-9_-]+=([^=]+)" element;
+  in
+    match != null && isRelativeValue (builtins.head match);
+
+  isRelativeValue = value:
+    value != ""
+    && !(lib.hasPrefix "/" value)
+    && (lib.hasInfix "/" value || hasConfigExtension value);
 
   # Scope one evaluated formatter entry beneath relPath, preserving every
   # other key verbatim (options, priority, custom settings).
@@ -70,21 +110,25 @@
     // {
       includes =
         if formatter ? includes
-        then map (scopePattern relPath) formatter.includes
+        then lib.concatMap (scopePatterns relPath) formatter.includes
         else ["${relPath}/**"];
-      excludes = map (scopePattern relPath) (formatter.excludes or []);
+      excludes = lib.concatMap (scopePatterns relPath) (formatter.excludes or []);
     };
 
   # Option/command elements that resolve against the invocation directory
   # instead of the formatted file silently change meaning when the wrapper
   # runs from the workspace root. Reject them loudly.
-  relativeToolRefs = formatter:
-    lib.filter
-    (element:
-      builtins.isString element
-      && (lib.hasPrefix "./" element || lib.hasPrefix "../" element
-        || element == "." || element == ".."))
-    ((lib.toList (formatter.command or [])) ++ (formatter.options or []));
+  relativeToolRefs = formatter: let
+    cmd = lib.toList (formatter.command or []);
+    exe = if cmd == [] then null else builtins.head cmd;
+    rest = if cmd == [] then [] else builtins.tail cmd;
+    exeRefs =
+      if builtins.isString exe
+      && (lib.hasPrefix "./" exe || lib.hasPrefix "../" exe || exe == "." || exe == "..")
+      then [exe]
+      else [];
+  in
+    exeRefs ++ lib.filter isRelativeRef (rest ++ (formatter.options or []));
 
   evalProject = treefmt-nix: pkgs: project: extraModules:
     (treefmt-nix.lib.evalModule pkgs {
@@ -154,6 +198,11 @@
     # deliberately pins its own formatter. Anything else flagged
     # `project-override` fails wrapper preparation.
     allowedOverrides ? [],
+    # Extra globs appended to the workspace root entry's FORMATTER excludes
+    # only (never global): subtrees the root policy must not touch, e.g.
+    # unselected project directories. Child coverage is unaffected because
+    # these never enter the merged global exclude list.
+    rootExtraExcludes ? [],
     projects,
   }: let
     # The workspace root entry (relPath "") carries the root policy and
@@ -212,13 +261,23 @@
         formatters;
       # Root formatters must not touch selected child subtrees; child
       # formatters own those files. Appended per-formatter (never global),
-      # so child coverage is unaffected.
+      # so child coverage is unaffected. The same holds for rootExtraExcludes
+      # (unselected subtrees): also per-formatter, never merged globally,
+      # otherwise a root exclusion would suppress child rules.
       childExcludes = lib.optionals (project.isRoot or false)
         (map (child: "${child}/**") childRelPaths);
+      rootExcludes = lib.optionals (project.isRoot or false) rootExtraExcludes;
+      # The root entry's own excludes join its formatter excludes as well:
+      # nothing from the root policy may enter the merged global exclude
+      # list, where it would suppress child rules (e.g. a bare `*.lock`).
+      rootOwnExcludes =
+        if project.isRoot or false
+        then lib.concatMap (scopePatterns project.relPath) (settings.excludes or [])
+        else [];
       scopedRooted = lib.mapAttrs (_: formatter:
         formatter
         // {
-          excludes = (formatter.excludes or []) ++ childExcludes;
+          excludes = (formatter.excludes or []) ++ childExcludes ++ rootExcludes ++ rootOwnExcludes;
         })
       scoped;
     in
@@ -232,7 +291,11 @@
           # Evaluated excludes already contain treefmt-nix defaults iff the
           # project left enableDefaultExcludes on; the final eval disables
           # defaults globally, so each project's opt-out survives exactly.
-          settings.excludes = map (scopePattern project.relPath) (settings.excludes or []);
+          # The root entry contributes no global excludes (see above).
+          settings.excludes =
+            if project.isRoot or false
+            then []
+            else lib.concatMap (scopePatterns project.relPath) (settings.excludes or []);
         };
         # Unscoped policy snapshot for local-vs-global equivalence checks.
         policy = lib.mapAttrs (_: formatter: {
@@ -271,11 +334,17 @@
       (name: package: referenceCommand treefmt-nix pkgs name package)
       centralPackages;
 
+    # A centrally pinned tool must equal the central reference exactly.
+    # There is no fallback to the shared default: a different binary is a
+    # divergence even when it happens to match another known version.
     classify = entry: tool: command:
       if builtins.elem tool entry.centralNames
-      && references.${tool} or null != null
-      && command == references.${tool}
-      then "central"
+      then
+        (
+          if references.${tool} or null != null && command == references.${tool}
+          then "central"
+          else "project-override"
+        )
       else if baselines.${tool} or null != null && command == baselines.${tool}
       then "shared-pkgs"
       else "project-override";
@@ -331,5 +400,5 @@
   in
     builtins.seq _force {inherit evalResult report;};
 in {
-  inherit validateRelPath scopePattern compose;
+  inherit validateRelPath scopePatterns compose;
 }

@@ -61,9 +61,15 @@
   };
 
   # Root policy fixture: covers the workspace root while child subtrees are
-  # composed alongside it.
+  # composed alongside it. Root prettier uses printWidth 40 (children default
+  # to 80) so the runtime proof can observe which rule formatted each file.
   fixtureRoot = {
     programs.alejandra.enable = true;
+    programs.prettier = {
+      enable = true;
+      settings.printWidth = 40;
+      includes = ["*.md"];
+    };
   };
 
   projects = [
@@ -101,6 +107,13 @@
     ]
     ++ projects;
   };
+
+  # The root fixture leaves default excludes on; reference them directly so
+  # the per-formatter expectation below stays exact.
+  rootDefaults = (treefmt-nix.lib.evalModule pkgs {
+    imports = [fixtureRoot];
+    projectRootFile = "flake.nix";
+  }).config.settings.excludes;
 
   formatters = composed.evalResult.config.settings.formatter;
   byName = name: formatters.${name};
@@ -148,9 +161,17 @@
   excludedMd = pkgs.writeText "excluded.md" "# untouched\n";
   rootNix = pkgs.writeText "root.nix" "{ y=2; }\n";
   spacedMd = pkgs.writeText "spaced.md" "# spaced out\n\nmore    spaces\n";
+  # Prose with a double space on a 64-char line: child printWidth 80
+  # collapses the space but keeps one line; root printWidth 40 wraps.
+  longMd = pkgs.writeText "long.md" "# Long\n\nThe  quick brown fox jumps over the lazy dog near the riverbank.\n";
+  # Every treefmt invocation resolves its project root through this marker,
+  # exactly like real checkouts. proj-a gets a formattable one inline.
+  emptyFlake = pkgs.writeText "flake.nix" "{}\n";
 in
-  # --- scoping ---
-  assert (byName "fleet-proj-a-alejandra").includes == ["fleet/proj-a/**/*.nix"];
+  # --- scoping: bare names expand to direct-child AND nested forms, because
+  # treefmt v2 requires at least one directory for `**/` (verified: `a/**/*.nix`
+  # misses `a/f.nix` but hits `a/sub/f.nix`) ---
+  assert (byName "fleet-proj-a-alejandra").includes == ["fleet/proj-a/*.nix" "fleet/proj-a/**/*.nix"];
   assert (byName "fleet-proj-a-alejandra").options == [];
   # --- preservation: priority and custom options survive composition ---
   assert (byName "fleet-proj-a-alejandra").priority == 10;
@@ -165,8 +186,8 @@ in
   # --- shared pkgs identity and project override detection ---
   assert sourceOf "fleet-proj-a-alejandra" == "shared-pkgs";
   assert sourceOf "fleet-proj-b-taplo" == "project-override";
-  # --- prettier scoping: bare globs gain **, rooted excludes stay rooted ---
-  assert (byName "fleet-proj-b-prettier").includes == ["fleet/proj-b/**/*.md"];
+  # --- prettier scoping: bare globs expand to both forms, rooted excludes stay rooted ---
+  assert (byName "fleet-proj-b-prettier").includes == ["fleet/proj-b/*.md" "fleet/proj-b/**/*.md"];
   assert (byName "fleet-proj-b-prettier").excludes == ["fleet/proj-b/generated/**"];
   # --- disabled defaults survive: *.lock must not be excluded for proj-b ---
   assert !(nlib.elem "fleet/proj-b/*.lock"
@@ -175,9 +196,17 @@ in
   assert composed.evalResult.config.projectRootFile == "flake.nix";
   # --- root entry: every child subtree excluded from root formatters ---
   assert (composedRoot.evalResult.config.settings.formatter.root-alejandra).excludes
-    == ["fleet/proj-a/**" "fleet/proj-b/**"];
+    == ["fleet/proj-a/**" "fleet/proj-b/**"] ++ rootDefaults;
   assert (composedRoot.evalResult.config.settings.formatter.root-alejandra).includes
     == ["*.nix"];
+  assert (composedRoot.evalResult.config.settings.formatter.root-prettier).includes
+    == ["*.md"];
+  # --- root contributes no global excludes (child rules unaffected) ---
+  # The root fixture leaves default excludes on; none of those bare patterns
+  # may leak into the merged global list (children carry their own scoped
+  # copies, e.g. `fleet/proj-a/**/*.lock`).
+  assert builtins.all (pattern: !(nlib.elem pattern rootDefaults))
+    (composedRoot.evalResult.config.settings.excludes or []);
   # --- unresolved divergence fails wrapper preparation ---
   assert failReport {
     inherit treefmt-nix pkgs projects;
@@ -288,19 +317,24 @@ in
       localB
     ];
   } ''
+    rootTreefmt=${composedRoot.evalResult.config.build.wrapper}/bin/treefmt
     export HOME="$TMPDIR/home"
     seed_tree() {
       root="$1"
-      mkdir -p "$root/fleet/proj-a" "$root/fleet/proj-b/generated"
+      mkdir -p "$root/fleet/proj-a" "$root/fleet/proj-a/nested" "$root/fleet/proj-b/generated"
       cp ${unformattedNix} "$root/fleet/proj-a/flake.nix"
+      cp ${unformattedNix} "$root/fleet/proj-a/nested/deep.nix"
       cp ${unformattedRs} "$root/fleet/proj-a/main.rs"
+      cp ${emptyFlake} "$root/fleet/proj-b/flake.nix"
       cp ${unformattedToml} "$root/fleet/proj-b/sample.toml"
       cp ${unformattedRs} "$root/fleet/proj-b/main.rs"
       cp ${unformattedMd} "$root/fleet/proj-b/doc.md"
       cp ${unformattedMd} "$root/fleet/proj-b/my doc.md"
+      cp ${longMd} "$root/fleet/proj-b/long.md"
       cp ${prettierRc} "$root/fleet/proj-b/.prettierrc"
       cp ${excludedMd} "$root/fleet/proj-b/generated/skip.md"
       cp ${rootNix} "$root/root-skip.nix"
+      cp ${emptyFlake} "$root/flake.nix"
       chmod -R u+w "$root"
     }
     seed_tree case-local
@@ -313,15 +347,35 @@ in
     # Byte equivalence between local and global formatting.
     diff -r case-local/fleet/proj-a case-global/fleet/proj-a
     diff -r case-local/fleet/proj-b case-global/fleet/proj-b
-    # Expected changes happened...
+    # Expected changes happened, at both nesting depths (locks in both
+    # arms of the bare-name expansion)...
     ! cmp -s ${unformattedNix} case-global/fleet/proj-a/flake.nix
+    ! cmp -s ${unformattedNix} case-global/fleet/proj-a/nested/deep.nix
     ! cmp -s ${unformattedToml} case-global/fleet/proj-b/sample.toml
     ! cmp -s ${unformattedMd} case-global/fleet/proj-b/doc.md
     ! cmp -s ${unformattedMd} "case-global/fleet/proj-b/my doc.md"
+    ! cmp -s ${longMd} case-global/fleet/proj-b/long.md
     # ...exclusions and non-selected files stayed byte-identical...
     cmp ${excludedMd} case-global/fleet/proj-b/generated/skip.md
     cmp ${rootNix} case-global/root-skip.nix
     # ...and a fresh-cache second pass is clean.
     (cd case-global && treefmt --walk filesystem --clear-cache --fail-on-change fleet/proj-a fleet/proj-b)
+    # Root composition: seed a tree with root files plus one child copy...
+    mkdir -p case-root/fleet/proj-b
+    cp ${emptyFlake} case-root/flake.nix
+    cp ${longMd} case-root/top.md
+    cp ${rootNix} case-root/top.nix
+    cp ${emptyFlake} case-root/fleet/proj-b/flake.nix
+    cp ${longMd} case-root/fleet/proj-b/long.md
+    cp ${prettierRc} case-root/fleet/proj-b/.prettierrc
+    chmod -R u+w case-root
+    (cd case-root && "$rootTreefmt" --walk filesystem .)
+    # ...root files formatted per root policy (40-col wrap)...
+    ! cmp -s ${longMd} case-root/top.md
+    ! cmp -s ${rootNix} case-root/top.nix
+    # ...while the child copy matches the child-rule output exactly,
+    # proving root rules did not touch it despite the whole-tree walk.
+    cmp case-global/fleet/proj-b/long.md case-root/fleet/proj-b/long.md
+    (cd case-root && "$rootTreefmt" --walk filesystem --clear-cache --fail-on-change .)
     touch "$out"
   ''
