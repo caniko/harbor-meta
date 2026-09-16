@@ -115,6 +115,24 @@
     projectRootFile = "flake.nix";
   }).config.settings.excludes;
 
+  # Same composition plus an unselected-subtree glob: must land on root
+  # formatter excludes only, never in the merged global list.
+  extraExcluded = scope.compose {
+    inherit treefmt-nix pkgs;
+    centralPackages = {rustfmt = centralRustfmt;};
+    allowedOverrides = allowedTaplo;
+    rootExtraExcludes = ["fleet/unselected/**"];
+    projects = [
+      {
+        name = "root";
+        relPath = "";
+        isRoot = true;
+        modules = [fixtureRoot];
+      }
+    ]
+    ++ projects;
+  };
+
   formatters = composed.evalResult.config.settings.formatter;
   byName = name: formatters.${name};
   sourceOf = scopedName: let
@@ -207,6 +225,11 @@ in
   # copies, e.g. `fleet/proj-a/**/*.lock`).
   assert builtins.all (pattern: !(nlib.elem pattern rootDefaults))
     (composedRoot.evalResult.config.settings.excludes or []);
+  # --- rootExtraExcludes land on root formatters only, never globally ---
+  assert nlib.elem "fleet/unselected/**"
+    extraExcluded.evalResult.config.settings.formatter.root-alejandra.excludes;
+  assert !(nlib.elem "fleet/unselected/**"
+    (extraExcluded.evalResult.config.settings.excludes or []));
   # --- unresolved divergence fails wrapper preparation ---
   assert failReport {
     inherit treefmt-nix pkgs projects;
