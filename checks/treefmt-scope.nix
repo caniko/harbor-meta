@@ -1,9 +1,10 @@
 # Regression suite for lib.treefmtScope (fleet composition contract).
 #
 # Eval-time asserts cover scoping, preservation, central overrides, identity
-# reporting and every rejection case. The runCommand below proves runtime
-# behavior on fixture copies: per-scope options, exclusions, prettier config
-# discovery from a foreign cwd, and idempotence.
+# reporting and every rejection case. The runCommand proofs below execute the
+# real wrappers on fixture copies: per-scope options, exclusions, prettier
+# config discovery from a foreign cwd, local-vs-global byte equivalence, and
+# idempotence.
 {
   pkgs,
   system,
@@ -59,6 +60,12 @@
     };
   };
 
+  # Root policy fixture: covers the workspace root while child subtrees are
+  # composed alongside it.
+  fixtureRoot = {
+    programs.alejandra.enable = true;
+  };
+
   projects = [
     {
       name = "proj-a";
@@ -72,9 +79,27 @@
     }
   ];
 
+  allowedTaplo = ["fleet/proj-b:taplo"];
+
   composed = scope.compose {
     inherit treefmt-nix pkgs projects;
     centralPackages = {rustfmt = centralRustfmt;};
+    allowedOverrides = allowedTaplo;
+  };
+
+  composedRoot = scope.compose {
+    inherit treefmt-nix pkgs;
+    centralPackages = {rustfmt = centralRustfmt;};
+    allowedOverrides = allowedTaplo;
+    projects = [
+      {
+        name = "root";
+        relPath = "";
+        isRoot = true;
+        modules = [fixtureRoot];
+      }
+    ]
+    ++ projects;
   };
 
   formatters = composed.evalResult.config.settings.formatter;
@@ -94,6 +119,35 @@
     then null
     else match.source;
 
+  mustFail = expr: !(builtins.tryEval (builtins.toJSON expr)).success;
+
+  failReport = args: mustFail (scope.compose args).report;
+
+  # Standalone local wrappers built from the same fixtures and toolchain.
+  # The runtime proof formats identical copies locally and globally, then
+  # requires byte-identical trees.
+  localWrapper = fixture: edition:
+    (treefmt-nix.lib.evalModule overlayPkgs {
+      imports = [
+        fixture
+        {
+          programs.rustfmt.package = nlib.mkForce centralRustfmt;
+          programs.rustfmt.edition = nlib.mkForce edition;
+        }
+      ];
+      projectRootFile = "flake.nix";
+    }).config.build.wrapper;
+  localA = localWrapper fixtureA "2021";
+  localB = localWrapper fixtureB "2024";
+
+  unformattedNix = pkgs.writeText "unformatted.nix" "{ x=1; }\n";
+  unformattedRs = pkgs.writeText "unformatted.rs" "fn main() { let some_extremely_long_variable_name = 1; println!(\"{}\", some_extremely_long_variable_name); }\n";
+  unformattedToml = pkgs.writeText "unformatted.toml" "x=1\n";
+  unformattedMd = pkgs.writeText "unformatted.md" "# hi\n\nsome   text\n";
+  prettierRc = pkgs.writeText "prettierrc" "{\"printWidth\": 80, \"proseWrap\": \"always\"}\n";
+  excludedMd = pkgs.writeText "excluded.md" "# untouched\n";
+  rootNix = pkgs.writeText "root.nix" "{ y=2; }\n";
+  spacedMd = pkgs.writeText "spaced.md" "# spaced out\n\nmore    spaces\n";
 in
   # --- scoping ---
   assert (byName "fleet-proj-a-alejandra").includes == ["fleet/proj-a/**/*.nix"];
@@ -119,10 +173,21 @@ in
     composed.evalResult.config.settings.excludes);
   # --- root marker forced once ---
   assert composed.evalResult.config.projectRootFile == "flake.nix";
+  # --- root entry: every child subtree excluded from root formatters ---
+  assert (composedRoot.evalResult.config.settings.formatter.root-alejandra).excludes
+    == ["fleet/proj-a/**" "fleet/proj-b/**"];
+  assert (composedRoot.evalResult.config.settings.formatter.root-alejandra).includes
+    == ["*.nix"];
+  # --- unresolved divergence fails wrapper preparation ---
+  assert failReport {
+    inherit treefmt-nix pkgs projects;
+    centralPackages = {rustfmt = centralRustfmt;};
+  };
   # --- rejections (must all fail) ---
-  assert !(builtins.tryEval (builtins.toJSON (scope.compose {
+  assert failReport {
     inherit treefmt-nix pkgs;
     centralPackages = {rustfmt = centralRustfmt;};
+    allowedOverrides = allowedTaplo;
     projects = [
       {
         name = "overlap-parent";
@@ -135,10 +200,11 @@ in
         modules = [fixtureB];
       }
     ];
-  }).report)).success;
-  assert !(builtins.tryEval (builtins.toJSON (scope.compose {
+  };
+  assert failReport {
     inherit treefmt-nix pkgs;
     centralPackages = {rustfmt = centralRustfmt;};
+    allowedOverrides = allowedTaplo;
     projects = [
       {
         name = "slug-one";
@@ -151,10 +217,34 @@ in
         modules = [fixtureA];
       }
     ];
-  }).report)).success;
-  assert !(builtins.tryEval (builtins.toJSON (scope.compose {
+  };
+  assert failReport {
     inherit treefmt-nix pkgs;
     centralPackages = {rustfmt = centralRustfmt;};
+    allowedOverrides = allowedTaplo;
+    projects = [
+      {
+        name = "final-collision";
+        relPath = "fleet/a";
+        modules = [{settings.formatter."b-c" = {
+          command = "${pkgs.hello}/bin/hello";
+          includes = ["*.txt"];
+        };}];
+      }
+      {
+        name = "final-collision-other";
+        relPath = "fleet/a-b";
+        modules = [{settings.formatter."c" = {
+          command = "${pkgs.hello}/bin/hello";
+          includes = ["*.txt"];
+        };}];
+      }
+    ];
+  };
+  assert failReport {
+    inherit treefmt-nix pkgs;
+    centralPackages = {rustfmt = centralRustfmt;};
+    allowedOverrides = allowedTaplo;
     projects = [
       {
         name = "dotdot";
@@ -162,10 +252,11 @@ in
         modules = [fixtureA];
       }
     ];
-  }).report)).success;
-  assert !(builtins.tryEval (builtins.toJSON (scope.compose {
+  };
+  assert failReport {
     inherit treefmt-nix pkgs;
     centralPackages = {rustfmt = centralRustfmt;};
+    allowedOverrides = allowedTaplo;
     projects = [
       {
         name = "empty";
@@ -173,28 +264,64 @@ in
         modules = [];
       }
     ];
-  }).report)).success;
+  };
+  assert failReport {
+    inherit treefmt-nix pkgs;
+    centralPackages = {rustfmt = centralRustfmt;};
+    allowedOverrides = allowedTaplo;
+    projects = [
+      {
+        name = "relref";
+        relPath = "fleet/relref";
+        modules = [{settings.formatter.taplo = {
+          command = "${pkgs.taplo}/bin/taplo";
+          includes = ["*.toml"];
+          options = ["--config" "./taplo.toml"];
+        };}];
+      }
+    ];
+  };
   pkgs.runCommand "harbor-meta-treefmt-scope" {
-    nativeBuildInputs = [composed.evalResult.config.build.wrapper];
+    nativeBuildInputs = [
+      composed.evalResult.config.build.wrapper
+      localA
+      localB
+    ];
   } ''
     export HOME="$TMPDIR/home"
-    mkdir -p "$HOME" fleet/proj-a fleet/proj-b/generated
-    cp ${pkgs.writeText "unformatted.nix" "{ x=1; }\n"} fleet/proj-a/flake.nix
-    cp ${pkgs.writeText "unformatted.rs" "fn main() { let some_extremely_long_variable_name = 1; println!(\"{}\", some_extremely_long_variable_name); }\n"} fleet/proj-a/main.rs
-    cp ${pkgs.writeText "unformatted.toml" "x=1\n"} fleet/proj-b/sample.toml
-    cp ${pkgs.writeText "unformatted.rs" "fn main() { let some_extremely_long_variable_name = 1; println!(\"{}\", some_extremely_long_variable_name); }\n"} fleet/proj-b/main.rs
-    cp ${pkgs.writeText "unformatted.md" "# hi\n\nsome   text\n"} fleet/proj-b/doc.md
-    cp ${pkgs.writeText "prettierrc" "{\"printWidth\": 80, \"proseWrap\": \"always\"}\n"} fleet/proj-b/.prettierrc
-    cp ${pkgs.writeText "excluded.md" "# untouched\n"} fleet/proj-b/generated/skip.md
-    cp ${pkgs.writeText "root.nix" "{ y=2; }\n"} root-skip.nix
-    chmod -R u+w .
-    # Run from the parent: per-file config discovery (prettier) must still work.
-    treefmt --walk filesystem fleet/proj-a fleet/proj-b
-    ! cmp -s ${pkgs.writeText "unformatted.nix" "{ x=1; }\n"} fleet/proj-a/flake.nix
-    ! cmp -s ${pkgs.writeText "unformatted.toml" "x=1\n"} fleet/proj-b/sample.toml
-    ! cmp -s ${pkgs.writeText "unformatted.md" "# hi\n\nsome   text\n"} fleet/proj-b/doc.md
-    cmp ${pkgs.writeText "excluded.md" "# untouched\n"} fleet/proj-b/generated/skip.md
-    cmp ${pkgs.writeText "root.nix" "{ y=2; }\n"} root-skip.nix
-    treefmt --walk filesystem --clear-cache --fail-on-change fleet/proj-a fleet/proj-b
+    seed_tree() {
+      root="$1"
+      mkdir -p "$root/fleet/proj-a" "$root/fleet/proj-b/generated"
+      cp ${unformattedNix} "$root/fleet/proj-a/flake.nix"
+      cp ${unformattedRs} "$root/fleet/proj-a/main.rs"
+      cp ${unformattedToml} "$root/fleet/proj-b/sample.toml"
+      cp ${unformattedRs} "$root/fleet/proj-b/main.rs"
+      cp ${unformattedMd} "$root/fleet/proj-b/doc.md"
+      cp ${unformattedMd} "$root/fleet/proj-b/my doc.md"
+      cp ${prettierRc} "$root/fleet/proj-b/.prettierrc"
+      cp ${excludedMd} "$root/fleet/proj-b/generated/skip.md"
+      cp ${rootNix} "$root/root-skip.nix"
+      chmod -R u+w "$root"
+    }
+    seed_tree case-local
+    seed_tree case-global
+    # Local wrappers run inside their own project roots...
+    (cd case-local/fleet/proj-a && "${localA}/bin/treefmt" --walk filesystem .)
+    (cd case-local/fleet/proj-b && "${localB}/bin/treefmt" --walk filesystem .)
+    # ...while the global wrapper runs once from the parent over both subtrees.
+    (cd case-global && treefmt --walk filesystem fleet/proj-a fleet/proj-b)
+    # Byte equivalence between local and global formatting.
+    diff -r case-local/fleet/proj-a case-global/fleet/proj-a
+    diff -r case-local/fleet/proj-b case-global/fleet/proj-b
+    # Expected changes happened...
+    ! cmp -s ${unformattedNix} case-global/fleet/proj-a/flake.nix
+    ! cmp -s ${unformattedToml} case-global/fleet/proj-b/sample.toml
+    ! cmp -s ${unformattedMd} case-global/fleet/proj-b/doc.md
+    ! cmp -s ${unformattedMd} "case-global/fleet/proj-b/my doc.md"
+    # ...exclusions and non-selected files stayed byte-identical...
+    cmp ${excludedMd} case-global/fleet/proj-b/generated/skip.md
+    cmp ${rootNix} case-global/root-skip.nix
+    # ...and a fresh-cache second pass is clean.
+    (cd case-global && treefmt --walk filesystem --clear-cache --fail-on-change fleet/proj-a fleet/proj-b)
     touch "$out"
   ''
