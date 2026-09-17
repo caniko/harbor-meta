@@ -2,14 +2,18 @@
   pkgs,
   lib,
 }: let
+  render = kind: openpencil:
+    lib.opencode.configTextFor {
+      inherit kind openpencil;
+    };
   script = ''
     set -euo pipefail
 
     usage() {
       cat <<'USAGE'
     Usage:
-      harbor-opencode sync --kind rust|python|mixed|detect [--root DIR]
-      harbor-opencode check --kind rust|python|mixed|detect [--root DIR]
+      harbor-opencode sync --kind rust|python|mixed|detect [--openpencil] [--root DIR]
+      harbor-opencode check --kind rust|python|mixed|detect [--openpencil] [--root DIR]
       harbor-opencode detect [--root DIR]
       harbor-opencode rollout [--root DIR] [--check]
     USAGE
@@ -23,6 +27,7 @@
     root="."
     kind="detect"
     check_only=0
+    openpencil=0
 
     parse_common() {
       while [ "$#" -gt 0 ]; do
@@ -36,6 +41,10 @@
             [ "$#" -ge 2 ] || die "--root requires a value"
             root="$2"
             shift 2
+            ;;
+          --openpencil)
+            openpencil=1
+            shift
             ;;
           --check)
             check_only=1
@@ -85,23 +94,28 @@
       esac
     }
 
+    extra_flags() {
+      if [ "$openpencil" -eq 1 ]; then
+        printf ' --openpencil'
+      fi
+    }
+
+    label() {
+      if [ "$openpencil" -eq 1 ]; then
+        printf '%s+openpencil\n' "$1"
+      else
+        printf '%s\n' "$1"
+      fi
+    }
+
     render_config() {
-      case "$1" in
-        rust)
-          cat <<'JSON'
-    {"$schema":"https://opencode.ai/config.json","lsp":{"nixd":{"command":["nixd"]},"rust":{"command":["rust-analyzer"]},"taplo":{"command":["taplo","lsp","stdio"],"extensions":[".toml"]}}}
-    JSON
-          ;;
-        python)
-          cat <<'JSON'
-    {"$schema":"https://opencode.ai/config.json","lsp":{"basedpyright":{"command":["basedpyright-langserver","--stdio"],"extensions":[".py",".pyi"]},"pyright":{"disabled":true},"ruff":{"command":["ruff","server"],"extensions":[".py",".pyi"]}}}
-    JSON
-          ;;
-        mixed)
-          cat <<'JSON'
-    {"$schema":"https://opencode.ai/config.json","lsp":{"basedpyright":{"command":["basedpyright-langserver","--stdio"],"extensions":[".py",".pyi"]},"nixd":{"command":["nixd"]},"pyright":{"disabled":true},"ruff":{"command":["ruff","server"],"extensions":[".py",".pyi"]},"rust":{"command":["rust-analyzer"]},"taplo":{"command":["taplo","lsp","stdio"],"extensions":[".toml"]}}}
-    JSON
-          ;;
+      case "$1:$openpencil" in
+        rust:0) printf '%s' '${render "rust" false}' ;;
+        rust:1) printf '%s' '${render "rust" true}' ;;
+        python:0) printf '%s' '${render "python" false}' ;;
+        python:1) printf '%s' '${render "python" true}' ;;
+        mixed:0) printf '%s' '${render "mixed" false}' ;;
+        mixed:1) printf '%s' '${render "mixed" true}' ;;
         *) die "unsupported kind: $1" ;;
       esac
     }
@@ -118,7 +132,7 @@
       path="$(config_path "$dir")"
       mkdir -p "$(dirname "$path")"
       render_config "$resolved" > "$path"
-      printf '%s: synced %s\n' "$dir" "$resolved"
+      printf '%s: synced %s\n' "$dir" "$(label "$resolved")"
     }
 
     check_one() {
@@ -128,15 +142,15 @@
       local tmp
       resolved="$(resolve_kind "$dir")"
       path="$(config_path "$dir")"
-      [ -f "$path" ] || die "$path is missing; run harbor-opencode sync --kind $resolved --root $dir"
+      [ -f "$path" ] || die "$path is missing; run harbor-opencode sync --kind $resolved$(extra_flags) --root $dir"
       tmp="$(mktemp)"
       trap 'rm -f "$tmp"' RETURN
       render_config "$resolved" > "$tmp"
       diff -u "$tmp" "$path" >/dev/null || {
         diff -u "$tmp" "$path" >&2 || true
-        die "$path is stale; run harbor-opencode sync --kind $resolved --root $dir"
+        die "$path is stale; run harbor-opencode sync --kind $resolved$(extra_flags) --root $dir"
       }
-      printf '%s: ok %s\n' "$dir" "$resolved"
+      printf '%s: ok %s\n' "$dir" "$(label "$resolved")"
     }
 
     rollout() {

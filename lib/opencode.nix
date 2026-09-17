@@ -31,17 +31,33 @@
     then rustLsp // pythonLsp
     else throw "harbor-meta.opencode: unsupported kind `${kind}`";
 
-  configForKind = kind: {
-    "$schema" = schema;
-    lsp = lspForKind kind;
-  };
+  mkConfig = {
+    kind,
+    openpencil ? false,
+  }:
+    {
+      "$schema" = schema;
+      lsp = lspForKind kind;
+    }
+    // lib.optionalAttrs openpencil {
+      mcp.openpencil = {
+        type = "local";
+        command = ["openpencil-desktop" "--mcp" "{env:HOME}/.local/share/openpencil/agent.op"];
+        enabled = true;
+      };
+    };
+
+  configForKind = kind: mkConfig {inherit kind;};
 in rec {
-  inherit schema rustLsp pythonLsp lspForKind configForKind;
+  inherit schema rustLsp pythonLsp lspForKind configForKind mkConfig;
 
   supportedKinds = ["rust" "python" "mixed"];
 
   configText = kind:
     builtins.toJSON (configForKind kind) + "\n";
+
+  configTextFor = args:
+    builtins.toJSON (mkConfig args) + "\n";
 
   configPath = ".opencode/opencode.jsonc";
 

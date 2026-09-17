@@ -82,12 +82,23 @@ in
       cat > python.json <<'EOF'
       ${lib.opencode.configText "python"}
       EOF
+      cat > rust-openpencil.json <<'EOF'
+      ${lib.opencode.configTextFor {
+        kind = "rust";
+        openpencil = true;
+      }}
+      EOF
       grep -q rust-analyzer rust.json
       grep -q nixd rust.json
       grep -q taplo rust.json
+      ! grep -q openpencil rust.json
       grep -q basedpyright-langserver python.json
       grep -q '"pyright":{"disabled":true}' python.json
       grep -q '"ruff"' python.json
+      grep -q openpencil-desktop rust-openpencil.json
+      ! grep -q '"openpencil_*":"deny"' rust-openpencil.json
+      ! grep -q '"mode":"subagent"' rust-openpencil.json
+      grep -q rust-analyzer rust-openpencil.json
       mkdir -p $out
       echo ok > $out/result
     '';
@@ -99,6 +110,11 @@ in
       harbor-opencode sync --kind detect --root project
       harbor-opencode check --kind detect --root project
       grep -q rust-analyzer project/.opencode/opencode.jsonc
+      ! grep -q openpencil project/.opencode/opencode.jsonc
+      harbor-opencode sync --kind detect --openpencil --root project
+      harbor-opencode check --kind detect --openpencil --root project
+      grep -q openpencil-desktop project/.opencode/opencode.jsonc
+      ! grep -q '"mode":"subagent"' project/.opencode/opencode.jsonc
       mkdir -p $out
       echo ok > $out/result
     '';
