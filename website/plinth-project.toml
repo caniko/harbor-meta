@@ -2,6 +2,7 @@
 title = "Harbor"
 description = "Shared Nix flake libraries for Rust, Python, JavaScript, Android, TeX, databases, blockchains, and editor tooling."
 base_url = "/"
+canonical_domain = "harbor.tartanoglu.com"
 footer_note = "Harbor keeps language-specific Nix plumbing in dedicated flakes so projects stay thin."
 
 [theme]
