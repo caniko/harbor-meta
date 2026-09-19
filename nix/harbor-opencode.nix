@@ -109,6 +109,7 @@
     }
 
     render_config() {
+      # shellcheck disable=SC2016 # JSON literals below contain intentional $ kept verbatim.
       case "$1:$openpencil" in
         rust:0) printf '%s' '${render "rust" false}' ;;
         rust:1) printf '%s' '${render "rust" true}' ;;
