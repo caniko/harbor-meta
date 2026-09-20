@@ -5,7 +5,7 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
     plinth = {
-      url = "git+https://github.com/caniko/plinth.git?ref=refs/heads/feat/machine-index&rev=d848aa7566f913e3c46b37b9f02654745b2bf482";
+      url = "git+https://github.com/caniko/plinth.git?ref=refs/heads/trunk&rev=f9d40ee3263a4fb371eb85e06818c206a7905446";
     };
   };
 
