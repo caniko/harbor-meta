@@ -76,9 +76,10 @@
         "gofmt *"
         "just --fmt *"
         "statix *"
+        "statix-fix *"
         "terraform fmt *"
       ];
-      source = "fleet treefmt programs (canix-toolbelt flake-modules/formatters.nix)";
+      source = "fleet treefmt programs (canix-toolbelt flake-modules/formatters.nix; statix runs as the statix-fix wrapper binary)";
     }
     {
       patterns = [
@@ -151,10 +152,14 @@
   # normalize to `/`, ERE metacharacters are escaped, `*` becomes `.*`,
   # `?` becomes `.`, a trailing ` .*` becomes `( .*)?`, and the result is
   # anchored. builtins.match is a full-string POSIX ERE, the same anchoring
-  # opencode gets from `new RegExp("^" + escaped + "$")`; unlike the JS `s`
-  # flag, Nix's `.` does not cross newlines, which single-line command
-  # resources never do. Checks replay deny patterns through this mirror —
-  # keep it in sync with the deployed matcher when opencode is bumped.
+  # opencode gets from `new RegExp("^" + escaped + "$")`. Parity holds only
+  # for single-line inputs: Nix's `.` crosses newlines (measured:
+  # `builtins.match "a.*b" "a\nb"` succeeds) while the deployed JS matcher
+  # without the `s` flag does not. Checks must therefore replay only
+  # single-line representative commands — multi-line shell-wrapper blobs
+  # are resolved to their inner single-line invocation by an explicit
+  # adapter, never matched as a blob. Keep in sync with the deployed
+  # matcher when opencode is bumped.
   matcher = rec {
     globToEre = glob: let
       normalized = lib.replaceStrings ["\\"] ["/"] glob;

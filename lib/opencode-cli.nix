@@ -265,9 +265,71 @@
     # The marker must be a top-level key with the exact value: a
     # hand-written config that merely mentions the marker key (in a
     # comment, a nested object, or with another value) is still
-    # `custom`, and JSONC that jq cannot parse fails closed as
+    # `custom`, and JSONC that cannot be parsed fails closed as
     # `custom`. A differing file that carries a valid marker is merely
-    # `stale` (an older harbor render) and is safe to overwrite.
+    # `stale` (an older harbor render, or the same document with comments)
+    # and is safe to overwrite. Ownership parsing is JSONC-aware: `//`
+    # line comments and `/* */` block comments outside strings are
+    # stripped before the top-level marker check, so a valid marked
+    # config with comments is `stale`, not `custom`. Trailing commas
+    # stay unparsable and fail closed as `custom`.
+    #
+    # The stripper below respects double-quoted strings and backslash
+    # escapes, so marker-looking text inside a string value can never
+    # satisfy the ownership check.
+    has_marker() {
+      local path="$1"
+      python3 - "$path" "$marker_key" "$marker_value" <<'PY' >/dev/null 2>&1
+    import json
+    import sys
+    path, key, want = sys.argv[1], sys.argv[2], sys.argv[3]
+    try:
+        src = open(path, encoding="utf-8").read()
+    except OSError:
+        sys.exit(1)
+    out = []
+    i, n = 0, len(src)
+    in_string = False
+    escaped = False
+    while i < n:
+        c = src[i]
+        nxt = src[i + 1] if i + 1 < n else ""
+        if in_string:
+            out.append(c)
+            if escaped:
+                escaped = False
+            elif c == "\\":
+                escaped = True
+            elif c == '"':
+                in_string = False
+            i += 1
+            continue
+        if c == '"':
+            in_string = True
+            out.append(c)
+            i += 1
+            continue
+        if c == "/" and nxt == "/":
+            while i < n and src[i] != "\n":
+                i += 1
+            continue
+        if c == "/" and nxt == "*":
+            i += 2
+            while i < n and not (src[i] == "*" and i + 1 < n and src[i + 1] == "/"):
+                i += 1
+            i += 2 if i < n else 0
+            continue
+        out.append(c)
+        i += 1
+    try:
+        doc = json.loads("".join(out))
+    except ValueError:
+        sys.exit(1)
+    if not isinstance(doc, dict):
+        sys.exit(1)
+    sys.exit(0 if doc.get(key) == want else 1)
+    PY
+    }
     config_state() {
       local dir="$1"
       local path tmp resolved
@@ -276,8 +338,7 @@
         printf 'missing\n'
         return 0
       fi
-      if ! jq -e --arg k "$marker_key" --arg v "$marker_value" \
-        'type == "object" and .[$k] == $v' "$path" >/dev/null 2>&1; then
+      if ! has_marker "$path"; then
         printf 'custom\n'
         return 0
       fi
@@ -484,8 +545,9 @@
 in {
   cliScript = {profiles ? {}}: scriptFor profiles;
 
-  # Package the generated script. jq joins the runtime inputs because
-  # config ownership validation parses the target config.
+  # Package the generated script. python3 joins the runtime inputs because
+  # config ownership validation parses the target config as JSONC; jq stays
+  # for the contract checks that assert on rendered JSON fragments.
   mkCli = {
     pkgs,
     profiles ? {},
@@ -500,6 +562,7 @@ in {
         pkgs.gnugrep
         pkgs.git
         pkgs.jq
+        pkgs.python3
       ];
       text = scriptFor profiles;
     };

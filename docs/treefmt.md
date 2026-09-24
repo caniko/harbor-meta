@@ -167,6 +167,7 @@ subcommand, so build, test, plan, and lint invocations are unaffected.
 | `gofmt *` | fleet treefmt programs (canix-toolbelt `flake-modules/formatters.nix`) |
 | `just --fmt *` | fleet treefmt programs (canix-toolbelt `flake-modules/formatters.nix`) |
 | `statix *` | fleet treefmt programs (canix-toolbelt `flake-modules/formatters.nix`) |
+| `statix-fix *` | fleet treefmt programs (treefmt invokes statix via the `statix-fix` wrapper binary) |
 | `terraform fmt *` | fleet treefmt programs (canix-toolbelt `flake-modules/formatters.nix`) |
 | `shfmt *` | root policy (`agent_safety.nix`; treefmt `--fail-on-change` is the gate) |
 | `shfmt -d *` | root policy (the globally allowed read-only shape) |

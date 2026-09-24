@@ -285,6 +285,29 @@ in
         must_grep "$d/.opencode/opencode.jsonc" '"${marker}":"${markerValue}"'
       done
 
+      # JSONC ownership: a marked config with comments is owned (stale, not
+      # custom) and syncs without --force; unparsable bytes and a marker
+      # that appears only as a string value stay custom and refused.
+      mkdir -p d-jsonc/.opencode d-broken/.opencode d-strval/.opencode
+      printf '%s\n' '{
+        // owned config with a comment: marker is a real top-level key
+        /* block comment */ "${marker}": "${markerValue}",
+        "custom": true
+      }' > d-jsonc/.opencode/opencode.jsonc
+      printf '%s\n' '{ not json at all' > d-broken/.opencode/opencode.jsonc
+      printf '%s\n' '{"note": "${marker}", "custom": true}' > d-strval/.opencode/opencode.jsonc
+      expect_die "d-broken check must fail" \
+        harbor-opencode check --kind detect --root d-broken
+      harbor-opencode sync --kind detect --root d-jsonc
+      must_grep d-jsonc/.opencode/opencode.jsonc '"${marker}":"${markerValue}"'
+      for d in d-broken d-strval; do
+        expect_die "$d must be refused without --force" \
+          harbor-opencode sync --kind detect --root "$d"
+        must_grep "$d/.opencode/opencode.jsonc" '"custom"'
+        harbor-opencode sync --kind detect --force --root "$d"
+        must_grep "$d/.opencode/opencode.jsonc" '"${marker}":"${markerValue}"'
+      done
+
       # A stale-but-marked render (an older harbor config) is refreshed
       # without --force.
       harbor-opencode sync --kind alpha --root d-alpha
@@ -568,6 +591,11 @@ in
       assert match "nix fmt *" "nix fmt";
       assert match "just --fmt *" "just --fmt --unstable";
       assert match "go fmt *" "go fmt ./...";
+      # statix runs as the statix-fix wrapper binary: `statix *` does not
+      # cover it (no space after `statix`), so the registry owns both.
+      assert match "statix-fix *" "statix-fix";
+      assert !(match "statix *" "statix-fix");
+      assert match "/nix/store/*/bin/statix-fix *" "/nix/store/abc-statix-fix/bin/statix-fix";
       # Rendered shapes: policy-only has no lsp block and carries the deny
       # fragment + identity marker; explicit defaults render identically
       # to the implicit ones; profile lsp blocks ride along; no allow
