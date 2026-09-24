@@ -121,9 +121,12 @@ LLM agents must format through `treefmt` — locally, or fleet-wide through
 `harbor-opencode sync` renders the deny fragment into each project's
 `.opencode/opencode.jsonc` under `permission.bash`;
 `harbor-opencode check` and `harbor-opencode rollout [--check]` verify it.
-Projects whose kind detection finds neither Rust nor Python get a
-policy-only config (kind `none`: the deny fragment without any `lsp` block),
-so coverage is language-independent.
+Detection is profile-driven: a Harbor binds its profile registry into its
+own `mkCli`, and each profile declares the root files and `flake.nix`
+markers that select it. The profile-less build shipped by harbor-meta
+resolves `detect` to `none` — a policy-only config (the deny fragment
+without any `lsp` block) — so coverage is language-independent, and a
+project matching no profile renders the same policy-only config.
 
 Harbor owns this project-side policy. The Home Manager global policy
 (`agent_safety.nix`) is deliberately untouched and still allows several of
@@ -175,10 +178,20 @@ Every Harbor-rendered config also carries the top-level marker
 `"harbor.meta/opencode-config": "1"`. `harbor-opencode sync` refuses to
 overwrite an existing config that lacks the marker (a hand-written config)
 unless `--force` is passed, and reports such files as `custom` during
-`rollout`. The marker key itself is ignored at runtime: opencode's config
-normalizer only copies known top-level keys into the effective config.
+`rollout`. The check requires that exact key at the top level with that
+exact value: a config that only mentions the marker inside a comment,
+nests it deeper, or sets another value is still custom. The marker key
+itself is ignored at runtime: opencode's config normalizer only copies
+known top-level keys into the effective config.
 
 Rollout status is reported as `ok`/`stale`/`missing`/`custom` per repository
 plus a summary line; dirty working trees are `blocked` in sync mode and
 annotated ` (dirty)` in read-only `--check` mode. Dirty repositories are
 coordination-blocked and reported separately — never silently dropped.
+The scan uses `git status --porcelain --untracked-files=all`, so the
+untracked configs from a previous rollout are visible as themselves
+rather than as a collapsed `?? .opencode/`; only foreign files count as
+dirt, and the config path plus its `harbor-opencode` write-temps are
+allowlisted. Writes are atomic (same-directory temp plus rename), and a
+`git status` that fails is treated as foreign dirt — fail-closed, never
+as a clean tree.

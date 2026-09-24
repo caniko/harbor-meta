@@ -34,7 +34,7 @@
       inherit (pkgs.stdenv.hostPlatform) system;
       targets = {
         default = fixture;
-        dev = fixture.dev;
+        inherit (fixture) dev;
         multiple = "${fixture}${fixture.dev}";
       };
     };
@@ -48,6 +48,88 @@
       targets.ambiguous = "${pkgs.hello}${pkgs.jq}";
     })
     true);
+
+  marker = lib.opencode.formatPolicy.marker;
+  markerValue = lib.opencode.formatPolicy.markerValue;
+
+  # Fixture profiles use deliberately neutral signals and commands: the
+  # harbor-meta engine must be language-agnostic, so nothing here mentions
+  # Cargo, rust-analyzer, pyproject, or any real language toolchain. Rust-
+  # specific assertions live in harbor-rs, which binds the real registry.
+  fixtureProfiles = {
+    alpha = {
+      lsp."fixture-alpha-lsp".command = ["fixture-alpha-lsp"];
+      detect = {
+        files = ["ALPHA"];
+        flakeMarkers = ["fixture-alpha"];
+      };
+      packages = _pkgs: [];
+    };
+    beta = {
+      lsp."fixture-beta-lsp".command = ["fixture-beta-lsp"];
+      detect = {
+        files = ["BETA"];
+        flakeMarkers = ["fixture-beta"];
+      };
+      packages = _pkgs: [];
+    };
+  };
+  fixtureRegistry = lib.opencode.mkRegistry fixtureProfiles;
+  fixtureCli = lib.opencode.mkCli {
+    inherit pkgs;
+    profiles = fixtureProfiles;
+  };
+  alphaLsp = lib.opencode.lspFor fixtureRegistry ["alpha"];
+  fixtureLsp = lib.opencode.lspFor fixtureRegistry ["alpha" "beta"];
+
+  # Shared assertion helpers for the runCommand scripts. stdenv's errexit
+  # state is ambiguous for buildCommand, so every script opts in with an
+  # explicit `set -e`; absence assertions must then be live, which bare
+  # `! grep` is not (the POSIX `!` exemption makes it a no-op under
+  # errexit). The `if grep; then exit 1; fi` shape taken by these helpers
+  # always terminates the build on a violation.
+  helpers = ''
+    must_grep() {
+      local file="$1" pat="$2"
+      if ! grep -qF -- "$pat" "$file"; then
+        echo "expected in $file: $pat" >&2
+        cat "$file" >&2 || true
+        exit 1
+      fi
+    }
+
+    must_not_grep() {
+      local file="$1" pat="$2"
+      if grep -qF -- "$pat" "$file"; then
+        echo "unexpected in $file: $pat" >&2
+        cat "$file" >&2 || true
+        exit 1
+      fi
+    }
+
+    expect_die() {
+      local what="$1" rc=0
+      shift
+      "$@" || rc=$?
+      if [ "$rc" -eq 0 ]; then
+        echo "$what: expected failure, got success" >&2
+        exit 1
+      fi
+      if [ "$rc" -eq 127 ]; then
+        echo "$what: command not found (test harness bug)" >&2
+        exit 1
+      fi
+    }
+
+    expect_detect() {
+      local want="$1" dir="$2" got
+      got="$(harbor-opencode detect --root "$dir")"
+      if [ "$got" != "$want" ]; then
+        echo "detect --root $dir: expected $want, got $got" >&2
+        exit 1
+      fi
+    }
+  '';
 in
   assert merged.env.A == "2";
   assert builtins.length merged.packages == 2;
@@ -76,47 +158,174 @@ in
     };
 
     opencode-configs = pkgs.runCommand "harbor-meta-opencode-configs" {} ''
-      cat > rust.json <<'EOF'
-      ${lib.opencode.configText "rust"}
+      set -e
+      ${helpers}
+
+      cat > policy.json <<'EOF'
+      ${lib.opencode.configTextFor {}}
       EOF
-      cat > python.json <<'EOF'
-      ${lib.opencode.configText "python"}
+      cat > alpha.json <<'EOF'
+      ${lib.opencode.configTextFor {lsp = alphaLsp;}}
       EOF
-      cat > rust-openpencil.json <<'EOF'
+      cat > combo.json <<'EOF'
+      ${lib.opencode.configTextFor {lsp = fixtureLsp;}}
+      EOF
+      cat > alpha-openpencil.json <<'EOF'
       ${lib.opencode.configTextFor {
-        kind = "rust";
+        lsp = alphaLsp;
         openpencil = true;
       }}
       EOF
-      grep -q rust-analyzer rust.json
-      grep -q nixd rust.json
-      grep -q taplo rust.json
-      ! grep -q openpencil rust.json
-      grep -q basedpyright-langserver python.json
-      grep -q '"pyright":{"disabled":true}' python.json
-      grep -q '"ruff"' python.json
-      grep -q openpencil-desktop rust-openpencil.json
-      ! grep -q '"openpencil_*":"deny"' rust-openpencil.json
-      ! grep -q '"mode":"subagent"' rust-openpencil.json
-      grep -q rust-analyzer rust-openpencil.json
-      mkdir -p $out
-      echo ok > $out/result
+
+      # Policy-only: no lsp block, identity marker, deny fragment present.
+      must_not_grep policy.json '"lsp"'
+      must_grep policy.json '"${marker}":"${markerValue}"'
+      must_grep policy.json '"alejandra *":"deny"'
+
+      # Profile lsp blocks render verbatim; subsets select what appears.
+      must_grep alpha.json '"fixture-alpha-lsp":{"command":["fixture-alpha-lsp"]}'
+      must_not_grep alpha.json fixture-beta-lsp
+      must_grep combo.json fixture-alpha-lsp
+      must_grep combo.json fixture-beta-lsp
+
+      # Openpencil joins the same document without policy collisions.
+      must_grep alpha-openpencil.json openpencil-desktop
+      must_grep alpha-openpencil.json fixture-alpha-lsp
+      must_not_grep alpha-openpencil.json '"mode":"subagent"'
+      must_not_grep alpha-openpencil.json '"openpencil_*":"deny"'
+
+      mkdir -p "$out"
+      echo ok > "$out/result"
     '';
 
     harbor-opencode-sync-check = pkgs.runCommand "harbor-meta-opencode-sync-check" {} ''
+      set -e
+      ${helpers}
+      export PATH=${fixtureCli}/bin:$PATH
+
+      # Detection reads only profile-declared signals; a bare Cargo.toml
+      # must not select anything in the language-agnostic engine.
+      mkdir -p d-alpha && touch d-alpha/ALPHA
+      mkdir -p d-beta && touch d-beta/BETA
+      mkdir -p d-combo && touch d-combo/ALPHA d-combo/BETA
+      mkdir -p d-mark && printf 'fixture-alpha = true;\n' > d-mark/flake.nix
+      mkdir -p d-cargo && touch d-cargo/Cargo.toml
+      mkdir -p d-empty
+
+      expect_detect alpha d-alpha
+      expect_detect beta d-beta
+      expect_detect alpha,beta d-combo
+      expect_detect alpha d-mark
+      expect_detect none d-cargo
+      expect_detect none d-empty
+
+      # sync renders the detected profile; check agrees.
+      harbor-opencode sync --kind detect --root d-alpha
+      cfg=d-alpha/.opencode/opencode.jsonc
+      must_grep cfg '"fixture-alpha-lsp":{"command":["fixture-alpha-lsp"]}'
+      must_not_grep cfg fixture-beta-lsp
+      must_not_grep cfg openpencil
+      harbor-opencode check --kind detect --root d-alpha
+
+      # Explicit kinds normalize to registry order: `beta,alpha` renders
+      # exactly what detection produces for the same subset.
+      harbor-opencode sync --kind detect --root d-combo
+      rm -f d-combo/.opencode/opencode.jsonc
+      harbor-opencode sync --kind beta,alpha --root d-combo
+      harbor-opencode check --kind detect --root d-combo
+
+      # Invalid kind spellings die.
+      expect_die 'bogus profile' harbor-opencode sync --kind bogus --root d-empty
+      expect_die 'detect in a profile list' harbor-opencode sync --kind alpha,detect --root d-empty
+      expect_die 'none combined with a profile' harbor-opencode sync --kind none,alpha --root d-empty
+      expect_die 'empty token in --kind' harbor-opencode sync --kind alpha,,beta --root d-empty
+
+      # The openpencil flag flips the render in both directions.
+      harbor-opencode sync --kind alpha --openpencil --root d-op
+      ocfg=d-op/.opencode/opencode.jsonc
+      must_grep ocfg openpencil-desktop
+      must_grep ocfg fixture-alpha-lsp
+      must_not_grep ocfg '"mode":"subagent"'
+      harbor-opencode check --kind alpha --openpencil --root d-op
+      expect_die 'plain check must see the openpencil render as stale' \
+        harbor-opencode check --kind alpha --root d-op
+      harbor-opencode sync --kind alpha --root d-op
+      must_not_grep ocfg openpencil-desktop
+
+      # An in-sync sync must skip the write entirely (mtime untouched).
+      acfg=d-alpha/.opencode/opencode.jsonc
+      touch -d @1000000000 "$acfg"
+      before="$(stat -c %Y "$acfg")"
+      harbor-opencode sync --kind detect --root d-alpha
+      after="$(stat -c %Y "$acfg")"
+      if [ "$before" != "$after" ]; then
+        echo "sync rewrote an in-sync config ($before -> $after)" >&2
+        exit 1
+      fi
+
+      # Ownership: the marker must be a top-level key with the exact
+      # value. A comment mentioning it, a nested copy, or another value
+      # is still hand-written and stays refused without --force.
+      mkdir -p d-comment/.opencode d-nested/.opencode d-wrong/.opencode
+      printf '%s\n' '{
+        // harbor.meta/opencode-config appears only in this comment
+        "custom": true
+      }' > d-comment/.opencode/opencode.jsonc
+      printf '%s\n' '{"nested":{"harbor.meta/opencode-config":"1"},"custom":true}' \
+        > d-nested/.opencode/opencode.jsonc
+      printf '%s\n' '{"harbor.meta/opencode-config":"0","custom":true}' \
+        > d-wrong/.opencode/opencode.jsonc
+
+      for d in d-comment d-nested d-wrong; do
+        expect_die "$d must be refused without --force" \
+          harbor-opencode sync --kind detect --root "$d"
+        must_grep "$d/.opencode/opencode.jsonc" '"custom"'
+        harbor-opencode sync --kind detect --force --root "$d"
+        must_grep "$d/.opencode/opencode.jsonc" '"alejandra *":"deny"'
+        must_grep "$d/.opencode/opencode.jsonc" '"${marker}":"${markerValue}"'
+      done
+
+      # A stale-but-marked render (an older harbor config) is refreshed
+      # without --force.
+      harbor-opencode sync --kind alpha --root d-alpha
+      sed 's/fixture-alpha-lsp/fixture-alpha-lsp-OLD/' "$acfg" > "$acfg.rewrite"
+      mv -f "$acfg.rewrite" "$acfg"
+      must_grep "$acfg" fixture-alpha-lsp-OLD
+      harbor-opencode sync --kind detect --root d-alpha
+      must_not_grep "$acfg" fixture-alpha-lsp-OLD
+
+      mkdir -p "$out"
+      echo ok > "$out/result"
+    '';
+
+    # The harbor-meta package deliberately binds no profiles: `detect`
+    # resolves to the policy-only config and every language-aware kind is
+    # rejected. Language-aware builds ship their own mkCli from harbor-rs.
+    harbor-opencode-profile-less = pkgs.runCommand "harbor-meta-harbor-opencode-profile-less" {} ''
+      set -e
+      ${helpers}
       export PATH=${harborOpencode}/bin:$PATH
-      mkdir -p project
-      touch project/Cargo.toml
-      harbor-opencode sync --kind detect --root project
-      harbor-opencode check --kind detect --root project
-      grep -q rust-analyzer project/.opencode/opencode.jsonc
-      ! grep -q openpencil project/.opencode/opencode.jsonc
-      harbor-opencode sync --kind detect --openpencil --root project
-      harbor-opencode check --kind detect --openpencil --root project
-      grep -q openpencil-desktop project/.opencode/opencode.jsonc
-      ! grep -q '"mode":"subagent"' project/.opencode/opencode.jsonc
-      mkdir -p $out
-      echo ok > $out/result
+
+      mkdir -p proj
+      harbor-opencode sync --kind detect --root proj
+      cfg=proj/.opencode/opencode.jsonc
+      must_grep cfg '"${marker}":"${markerValue}"'
+      must_grep cfg '"alejandra *":"deny"'
+      must_not_grep cfg '"lsp"'
+      harbor-opencode check --kind detect --root proj
+      expect_detect none proj
+
+      expect_die 'profile-less build must reject --kind rust' \
+        harbor-opencode sync --kind rust --root proj
+      expect_die 'profile-less build must reject --kind python' \
+        harbor-opencode sync --kind python --root proj
+
+      harbor-opencode --help > help.txt
+      must_grep help.txt 'detect|none'
+      must_not_grep help.txt rust
+
+      mkdir -p "$out"
+      echo ok > "$out/result"
     '';
 
     package-tests-plan-shape = let
@@ -235,7 +444,7 @@ in
       bundle = lib.packageTests.mkBuildTestBundle {
         artifactBuilder = builder;
         inherit plan;
-        runnerBuilder = rendered.runnerBuilder;
+        inherit (rendered) runnerBuilder;
       };
     in
       assert pkgs.lib.hasInfix "chocolatey/test-environment" vagrantfile;
@@ -294,10 +503,37 @@ in
       raw = pkgs.lib.concatMap (entry: entry.patterns) fp.registry;
       firstToken = pattern: builtins.head (pkgs.lib.splitString " " pattern);
       policyOnly = builtins.toJSON (lib.opencode.mkConfig {});
-      defaultedKind = builtins.toJSON (lib.opencode.mkConfig {kind = "none";});
+      defaultedShape = builtins.toJSON (lib.opencode.mkConfig {
+        lsp = {};
+        openpencil = false;
+      });
       withExtra = builtins.toJSON (lib.opencode.mkConfig {extraFormatDenies = ["myfmt *"];});
       withoutPolicy = builtins.toJSON (lib.opencode.mkConfig {formatPermissions = false;});
-      rustJson = builtins.toJSON (lib.opencode.mkConfig {kind = "rust";});
+      lspJson = builtins.toJSON (lib.opencode.mkConfig {lsp = fixtureLsp;});
+
+      # Registry contract probes: each malformed input must fail closed
+      # (assertions and throws are caught under deepSeq + tryEval; shallow
+      # tryEval alone would miss the lazy per-profile thunks).
+      badName = builtins.tryEval (builtins.deepSeq (lib.opencode.mkRegistry {Alpha = {};}) true);
+      reservedName = builtins.tryEval (builtins.deepSeq (lib.opencode.mkRegistry {detect = {};}) true);
+      unknownKey = builtins.tryEval (builtins.deepSeq (lib.opencode.mkRegistry {
+          alpha = {
+            lsp = {};
+            package = [];
+          };
+        })
+        true);
+      nonListDetect = builtins.tryEval (builtins.deepSeq (lib.opencode.mkRegistry {
+          alpha = {
+            lsp = {};
+            detect.files = "ALPHA";
+          };
+        })
+        true);
+      missingLsp = builtins.tryEval (builtins.deepSeq (lib.opencode.mkRegistry {alpha = {};}) true);
+      tooManyProfiles = builtins.tryEval (builtins.deepSeq (lib.opencode.profileSubsets ["a" "b" "c" "d" "e" "f" "g"]) true);
+      validRegistry = builtins.deepSeq fixtureRegistry true;
+      subsets = lib.opencode.profileSubsets ["alpha" "beta"];
     in
       # Registry shape: every base pattern starts with a literal command name.
       # A broad glob like `*fmt *` (or a wildcard-bearing first token) would
@@ -333,23 +569,45 @@ in
       assert match "just --fmt *" "just --fmt --unstable";
       assert match "go fmt *" "go fmt ./...";
       # Rendered shapes: policy-only has no lsp block and carries the deny
-      # fragment + identity marker; kind configs keep their lsp; no allow
-      # values and no catch-all ever appear; extras get twin expansion; the
-      # identity marker survives even with formatPermissions = false.
+      # fragment + identity marker; explicit defaults render identically
+      # to the implicit ones; profile lsp blocks ride along; no allow
+      # values and no catch-all ever appear; extras get twin expansion;
+      # the identity marker survives even with formatPermissions = false.
       assert !(pkgs.lib.hasInfix "\"lsp\"" policyOnly);
-      assert policyOnly == defaultedKind;
+      assert policyOnly == defaultedShape;
       assert pkgs.lib.hasInfix "\"permission\"" policyOnly;
-      assert pkgs.lib.hasInfix "\"${fp.marker}\":\"${fp.markerValue}\"" policyOnly;
+      assert pkgs.lib.hasInfix "\"${marker}\":\"${markerValue}\"" policyOnly;
       assert pkgs.lib.hasInfix "\"alejandra *\":\"deny\"" policyOnly;
       assert pkgs.lib.hasInfix "\"*=* alejandra *\":\"deny\"" policyOnly;
       assert pkgs.lib.hasInfix "\"/nix/store/*/bin/alejandra *\":\"deny\"" policyOnly;
       assert !(pkgs.lib.hasInfix ":\"allow\"" policyOnly);
       assert !(pkgs.lib.hasInfix "\"*\":\"deny\"" policyOnly);
-      assert pkgs.lib.hasInfix "\"lsp\"" rustJson;
+      assert pkgs.lib.hasInfix "\"lsp\"" lspJson;
+      assert pkgs.lib.hasInfix "\"fixture-alpha-lsp\"" lspJson;
       assert pkgs.lib.hasInfix "\"myfmt *\":\"deny\"" withExtra;
       assert pkgs.lib.hasInfix "\"*=* myfmt *\":\"deny\"" withExtra;
       assert !(pkgs.lib.hasInfix "\"permission\"" withoutPolicy);
-      assert pkgs.lib.hasInfix "\"${fp.marker}\":\"${fp.markerValue}\"" withoutPolicy;
+      assert pkgs.lib.hasInfix "\"${marker}\":\"${markerValue}\"" withoutPolicy;
+      # The kind-based config API is gone: `kind` is not a parameter, so
+      # passing it fails closed at the call site.
+      assert !(builtins.functionArgs lib.opencode.mkConfig ? kind);
+      # Profile registry: malformed names, reserved keywords, unknown keys,
+      # malformed detect lists, and missing lsp blocks all fail closed; the
+      # valid fixture registry evaluates fully.
+      assert !badName.success;
+      assert !reservedName.success;
+      assert !unknownKey.success;
+      assert !nonListDetect.success;
+      assert !missingLsp.success;
+      assert validRegistry;
+      # Subset enumeration is deterministic, registry-ordered, and capped.
+      assert subsets == [[] ["alpha"] ["beta"] ["alpha" "beta"]];
+      assert !tooManyProfiles.success;
+      assert lib.opencode.profileKey [] == "none";
+      assert lib.opencode.profileKey ["alpha" "beta"] == "alpha,beta";
+      # lspFor merges exactly the requested subset in registry order.
+      assert builtins.attrNames (lib.opencode.lspFor fixtureRegistry ["alpha"]) == ["fixture-alpha-lsp"];
+      assert builtins.attrNames (lib.opencode.lspFor fixtureRegistry ["alpha" "beta"]) == ["fixture-alpha-lsp" "fixture-beta-lsp"];
         pkgs.runCommand "harbor-meta-format-policy-contract" {} ''
           mkdir -p "$out"
           echo ok > "$out/result"
@@ -359,127 +617,190 @@ in
       fp = lib.opencode.formatPolicy;
       denyGreps =
         pkgs.lib.concatMapStringsSep "\n" (pattern: ''
-          grep -qF '"${pattern}":"deny"' rust.json
+          grep -qF '"${pattern}":"deny"' lsp.json
           grep -qF '"${pattern}":"deny"' none.json
-          grep -qF '"*=* ${pattern}":"deny"' rust.json
+          grep -qF '"*=* ${pattern}":"deny"' lsp.json
         '')
         fp.patterns;
     in
       pkgs.runCommand "harbor-meta-format-policy-render" {
-        rustConfig = lib.opencode.configText "rust";
-        noneConfig = lib.opencode.configText "none";
-        defaultedConfig = lib.opencode.configTextFor {};
-        rustOpenpencilConfig = lib.opencode.configTextFor {
-          kind = "rust";
+        lspConfig = lib.opencode.configTextFor {lsp = fixtureLsp;};
+        noneConfig = lib.opencode.configTextFor {};
+        defaultedConfig = lib.opencode.configTextFor {
+          lsp = {};
+          openpencil = false;
+        };
+        fixtureOpenpencilConfig = lib.opencode.configTextFor {
+          lsp = fixtureLsp;
           openpencil = true;
         };
         passAsFile = [
-          "rustConfig"
+          "lspConfig"
           "noneConfig"
           "defaultedConfig"
-          "rustOpenpencilConfig"
+          "fixtureOpenpencilConfig"
         ];
       } ''
-        cp "$rustConfigPath" rust.json
+        set -e
+        ${helpers}
+
+        cp "$lspConfigPath" lsp.json
         cp "$noneConfigPath" none.json
         cp "$defaultedConfigPath" defaulted.json
-        cp "$rustOpenpencilConfigPath" rust-openpencil.json
+        cp "$fixtureOpenpencilConfigPath" fixture-openpencil.json
 
         ${denyGreps}
 
         # Identity marker in every rendered shape (used by sync/refusal).
-        grep -qF '"harbor.meta/opencode-config":"1"' rust.json
-        grep -qF '"harbor.meta/opencode-config":"1"' none.json
-        grep -qF '"harbor.meta/opencode-config":"1"' defaulted.json
-        grep -qF '"harbor.meta/opencode-config":"1"' rust-openpencil.json
+        must_grep lsp.json '"${marker}":"${markerValue}"'
+        must_grep none.json '"${marker}":"${markerValue}"'
+        must_grep defaulted.json '"${marker}":"${markerValue}"'
+        must_grep fixture-openpencil.json '"${marker}":"${markerValue}"'
 
         # Deny-only: no allow anywhere, no catch-all key.
-        ! grep -q ':"allow"' rust.json
-        ! grep -q ':"allow"' none.json
-        ! grep -q ':"allow"' rust-openpencil.json
-        ! grep -qF '"*":"deny"' rust.json
-        ! grep -qF '"*":"ask"' rust.json
+        must_not_grep lsp.json ':"allow"'
+        must_not_grep none.json ':"allow"'
+        must_not_grep fixture-openpencil.json ':"allow"'
+        must_not_grep lsp.json '"*":"deny"'
+        must_not_grep lsp.json '"*":"ask"'
 
-        # Policy-only shapes carry no lsp block; kind shapes keep theirs.
-        ! grep -q '"lsp"' none.json
-        ! grep -q '"lsp"' defaulted.json
-        grep -q '"lsp"' rust.json
-        grep -q rust-analyzer rust.json
+        # Policy-only shapes carry no lsp block; profile shapes keep theirs.
+        must_not_grep none.json '"lsp"'
+        must_not_grep defaulted.json '"lsp"'
+        must_grep lsp.json '"lsp"'
+        must_grep lsp.json fixture-alpha-lsp
 
         # Openpencil and the format policy coexist in one document.
-        grep -q openpencil-desktop rust-openpencil.json
-        grep -qF '"alejandra *":"deny"' rust-openpencil.json
-        ! grep -q '"mode":"subagent"' rust-openpencil.json
+        must_grep fixture-openpencil.json openpencil-desktop
+        must_grep fixture-openpencil.json '"alejandra *":"deny"'
+        must_not_grep fixture-openpencil.json '"mode":"subagent"'
 
         mkdir -p "$out"
         echo ok > "$out/result"
       '';
 
     harbor-opencode-rollout-check = pkgs.runCommand "harbor-meta-opencode-rollout-check" {} ''
-      export PATH=${harborOpencode}/bin:${pkgs.git}/bin:$PATH
-      export HOME="$PWD"
-      export GIT_CONFIG_GLOBAL="$PWD/gitconfig"
-      export GIT_CONFIG_SYSTEM=/dev/null
-      printf '[user]\n\temail = ci@example.com\n\tname = Harbor CI\n' > gitconfig
+      set -e
+      ${helpers}
+      export PATH=${fixtureCli}/bin:${pkgs.git}/bin:$PATH
 
-      for name in rustproj plainproj customproj dirtyproj; do
+      # Hermetic fixture git: the runCommand sandbox carries no operator
+      # git config, and these exports keep it that way (identity comes
+      # from disposable-fixture -c flags; no global ignore can hide
+      # .opencode/ from the cleanliness scan).
+      mkdir -p xdg-empty
+      export XDG_CONFIG_HOME="$PWD/xdg-empty"
+      export GIT_CONFIG_GLOBAL=/dev/null
+      g() {
+        git -c core.excludesFile=/dev/null -c user.name='Harbor CI' \
+          -c user.email=ci@example.com "$@"
+      }
+
+      for name in alphaproj betaproj plainproj customproj dirtyproj; do
         mkdir -p "fleet/$name"
-        git init -q "fleet/$name"
+        g -C "fleet/$name" init -q
       done
-      touch fleet/rustproj/Cargo.toml
+      touch fleet/alphaproj/ALPHA
+      touch fleet/betaproj/BETA
+      # plainproj needs committed content: a bare `git commit` in an empty
+      # repository exits 1, which would silently poison every summary.
+      printf 'readme\n' > fleet/plainproj/README.md
       mkdir -p fleet/customproj/.opencode
-      printf '{"$schema":"https://opencode.ai/config.json","custom":true}\n' \
+      printf '%s\n' '{"$schema":"https://opencode.ai/config.json","custom":true}' \
         > fleet/customproj/.opencode/opencode.jsonc
-      touch fleet/dirtyproj/unrelated-change.txt
-      for name in rustproj plainproj customproj; do
-        git -C "fleet/$name" add -A
-        git -C "fleet/$name" commit -qm init
+      printf 'another session is here\n' > fleet/dirtyproj/unrelated-change.txt
+      for name in alphaproj betaproj plainproj customproj; do
+        g -C "fleet/$name" add -A
+        g -C "fleet/$name" commit -qm init
       done
 
-      # First rollout must report the hand-written config and the dirty tree
-      # without touching either — an exit 0 here would hide both.
-      if harbor-opencode rollout --root fleet; then
+      # Run 1: writes clean repos, refuses the hand-written config, blocks
+      # the dirty tree — an exit 0 here would hide all three.
+      if harbor-opencode rollout --root fleet > run1.log 2>&1; then
         echo "rollout exited 0 despite a custom config and a dirty repo" >&2
+        cat run1.log >&2
         exit 1
       fi
-      grep -q rust-analyzer fleet/rustproj/.opencode/opencode.jsonc
-      grep -qF '"alejandra *":"deny"' fleet/rustproj/.opencode/opencode.jsonc
-      grep -qF '"harbor.meta/opencode-config":"1"' fleet/rustproj/.opencode/opencode.jsonc
-      ! grep -q '"lsp"' fleet/plainproj/.opencode/opencode.jsonc
-      grep -qF '"alejandra *":"deny"' fleet/plainproj/.opencode/opencode.jsonc
-      grep -q '"custom":true' fleet/customproj/.opencode/opencode.jsonc
-      ! grep -qF 'harbor.meta/opencode-config' fleet/customproj/.opencode/opencode.jsonc
-      test ! -f fleet/dirtyproj/.opencode/opencode.jsonc
-
-      # --force replaces the custom config; the foreign dirt still blocks.
-      if harbor-opencode rollout --root fleet --force; then
-        echo "rollout exited 0 while a repo still has foreign dirt" >&2
+      must_grep run1.log 'total=5 synced=3 unchanged=0 blocked-dirty=1 custom=1 dirty=1'
+      must_grep run1.log 'blocked (dirty working tree)'
+      must_grep fleet/alphaproj/.opencode/opencode.jsonc fixture-alpha-lsp
+      must_grep fleet/betaproj/.opencode/opencode.jsonc fixture-beta-lsp
+      must_grep fleet/plainproj/.opencode/opencode.jsonc '"alejandra *":"deny"'
+      must_not_grep fleet/plainproj/.opencode/opencode.jsonc '"lsp"'
+      must_grep fleet/customproj/.opencode/opencode.jsonc '"custom":true'
+      must_not_grep fleet/customproj/.opencode/opencode.jsonc "${marker}"
+      if [ -f fleet/dirtyproj/.opencode/opencode.jsonc ]; then
+        echo "dirty repo was written during rollout" >&2
         exit 1
       fi
-      grep -qF '"alejandra *":"deny"' fleet/customproj/.opencode/opencode.jsonc
-      test ! -f fleet/dirtyproj/.opencode/opencode.jsonc
 
-      # Our own rendered config is not foreign dirt: synced repos keep
-      # syncing, and a repo that loses its foreign change is picked up.
+      # Read-only check reports the same state (dirtyproj is still missing
+      # its config).
+      if harbor-opencode rollout --root fleet --check > run2.log 2>&1; then
+        echo "rollout --check exited 0 with a custom config and a missing config" >&2
+        cat run2.log >&2
+        exit 1
+      fi
+      must_grep run2.log 'total=5 ok=3 stale=0 missing=1 custom=1 dirty=1'
+
+      # Run 2: --force replaces the custom config; the dirty tree still
+      # blocks, and already-synced repos are untouched.
+      if harbor-opencode rollout --root fleet --force > run3.log 2>&1; then
+        echo "rollout --force exited 0 while a repo still has foreign dirt" >&2
+        cat run3.log >&2
+        exit 1
+      fi
+      must_grep run3.log 'total=5 synced=1 unchanged=3 blocked-dirty=1 custom=0 dirty=1'
+      must_grep fleet/customproj/.opencode/opencode.jsonc '"alejandra *":"deny"'
+      must_grep fleet/customproj/.opencode/opencode.jsonc '"${marker}":"${markerValue}"'
+      if [ -f fleet/dirtyproj/.opencode/opencode.jsonc ]; then
+        echo "dirty repo was written during forced rollout" >&2
+        exit 1
+      fi
+
+      # Run 3: once the foreign file is gone the repo is picked up again,
+      # and a repeated rollout is not blocked by its own previous writes.
+      # Without --untracked-files=all the untracked .opencode/ from runs
+      # 1-2 collapses to `?? .opencode/` and would read as foreign dirt;
+      # our write-temp namespace must be tolerated too.
       rm fleet/dirtyproj/unrelated-change.txt
-      harbor-opencode rollout --root fleet
-      test -f fleet/dirtyproj/.opencode/opencode.jsonc
+      printf 'leftover\n' > fleet/betaproj/.opencode/opencode.jsonc.tmp.stray
+      if harbor-opencode rollout --root fleet > run4.log 2>&1; then :; else
+        echo "repeat rollout must succeed once the foreign file is gone" >&2
+        cat run4.log >&2
+        exit 1
+      fi
+      must_grep run4.log 'total=5 synced=1 unchanged=4 blocked-dirty=0 custom=0 dirty=0'
+      if [ ! -f fleet/betaproj/.opencode/opencode.jsonc.tmp.stray ]; then
+        echo "a stray write-temp was deleted (allowed dirt must be left alone)" >&2
+        exit 1
+      fi
 
       # Read-only verification passes once every config is rendered.
-      harbor-opencode rollout --root fleet --check
-
-      # Explicit sync refuses a hand-written config without --force, then
-      # succeeds with it; kind detection falls back to policy-only `none`.
-      mkdir -p custom-solo/.opencode
-      printf '{"custom":true}\n' > custom-solo/.opencode/opencode.jsonc
-      if harbor-opencode sync --kind detect --root custom-solo; then
-        echo "sync overwrote a custom config without --force" >&2
+      if harbor-opencode rollout --root fleet --check > run5.log 2>&1; then :; else
+        echo "final rollout --check must pass" >&2
+        cat run5.log >&2
         exit 1
       fi
-      grep -q '"custom":true' custom-solo/.opencode/opencode.jsonc
-      harbor-opencode sync --kind detect --root custom-solo --force
-      grep -qF '"alejandra *":"deny"' custom-solo/.opencode/opencode.jsonc
-      ! grep -q '"lsp"' custom-solo/.opencode/opencode.jsonc
+      must_grep run5.log 'total=5 ok=5 stale=0 missing=0 custom=0 dirty=0'
+
+      # A git that cannot answer must fail closed as foreign dirt instead
+      # of silently treating the tree as clean.
+      mkdir -p fleet/brokenproj
+      printf 'gitdir: /nonexistent\n' > fleet/brokenproj/.git
+      if harbor-opencode rollout --root fleet > run6.log 2>&1; then
+        echo "rollout must fail when a repo's git status is unreadable" >&2
+        cat run6.log >&2
+        exit 1
+      fi
+      must_grep run6.log 'git status failed'
+      must_grep run6.log 'blocked-dirty=1'
+      rm -f fleet/brokenproj/.git
+      rmdir fleet/brokenproj
+
+      # A scan root without any repository is an error, not a no-op.
+      mkdir -p nofleet
+      expect_die 'empty scan root' harbor-opencode rollout --root nofleet
 
       mkdir -p "$out"
       echo ok > "$out/result"

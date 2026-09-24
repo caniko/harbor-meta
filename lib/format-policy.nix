@@ -19,7 +19,7 @@
   #     lint, and plan invocations stay governed by the global policy.
   #
   # Patterns are language-independent: they cover the whole fleet regardless
-  # of which LSP kind (rust/python/mixed/none) a project renders.
+  # of which profile subset (or none at all) a project's config renders.
   registry = [
     {
       patterns = ["alejandra *"];

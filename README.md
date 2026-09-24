@@ -18,14 +18,14 @@ outputs without retaining string context. Orchestrators can serialize that
 manifest and realize the same derivations locally or on an explicitly selected
 remote builder without changing store identity.
 
-Opencode LSP discovery remains a separate surface: checked-in
-`.opencode/opencode.jsonc` files declare the LSPs opencode may use, while each
-project's direnv-powered harbor dev shell supplies the actual binaries.
+When a profile registry is bound, checked-in `.opencode/opencode.jsonc`
+files declare the LSPs opencode may use, while each project's
+direnv-powered harbor dev shell supplies the actual binaries.
 
-OpenPencil MCP is opt-in. Default generated configs stay LSP-only. Pass
-`--openpencil` to register the server. The desktop binary must already be on
-PATH. OpenCode code mode (`OPENCODE_EXPERIMENTAL_CODE_MODE`) defers MCP
-schemas behind the `execute` tool.
+OpenPencil MCP is opt-in: default generated configs carry no `mcp` block.
+Pass `--openpencil` to register the server. The desktop binary must already
+be on PATH. OpenCode code mode (`OPENCODE_EXPERIMENTAL_CODE_MODE`) defers
+MCP schemas behind the `execute` tool.
 
 ## Agent shells and validation
 
@@ -45,7 +45,15 @@ test. Keep application startup and dependency-import checks separate.
 
 ```bash
 harbor-opencode sync --kind detect
-harbor-opencode sync --kind rust --openpencil
+harbor-opencode sync --kind detect --openpencil
 harbor-opencode check --kind detect
 harbor-opencode rollout --root /data/nvme0/can/Projects
 ```
+
+The `harbor-opencode` built by this repository deliberately binds no
+profile registry: `detect` and `none` both render the policy-only config
+(the format-permission deny fragment without an `lsp` block), and any
+profile name is rejected as unsupported. Language-aware builds bind a
+registry in their own flake through `lib.opencode.mkCli { inherit pkgs;
+profiles = ...; }` — harbor-rs ships the `rust` profile and the
+corresponding binary.

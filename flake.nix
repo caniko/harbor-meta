@@ -41,10 +41,12 @@
         pkgs,
         ...
       }: let
-        harborOpencode = import ./nix/harbor-opencode.nix {
-          inherit pkgs;
-          lib = self.lib;
-        };
+        # The harbor-meta package is deliberately profile-less: with an empty
+        # profile registry only `detect`/`none` resolve (both render the
+        # policy-only config), so `--kind rust` errors as unsupported.
+        # Language-aware builds bind a profile registry in their own flake
+        # (harbor-rs ships the rust one).
+        harborOpencode = self.lib.opencode.mkCli {inherit pkgs;};
         treefmt = inputs.treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix);
       in {
         packages = {
@@ -63,7 +65,7 @@
         checks =
           (import ./checks {
             inherit pkgs nixpkgs;
-            lib = self.lib;
+            inherit (self) lib;
             inherit harborOpencode;
           })
           // {
@@ -74,7 +76,7 @@
             };
             treefmt-scope = import ./checks/treefmt-scope.nix {
               inherit pkgs system nixpkgs;
-              lib = self.lib;
+              inherit (self) lib;
               inherit (inputs) treefmt-nix rust-overlay;
             };
           };
