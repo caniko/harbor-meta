@@ -41,8 +41,7 @@
     );
     drv =
       if builder != null
-      then
-        builder spec
+      then builder spec
       else
         pkgs.mkShell (
           mkShellArgs

@@ -4,18 +4,17 @@
     inputs,
   }: let
     flake = import flakeNix;
-    outputs =
-      flake.outputs (
-        inputs
-        // {
-          self =
-            outputs
-            // {
-              outPath = dirOf flakeNix;
-              inherit inputs;
-            };
-        }
-      );
+    outputs = flake.outputs (
+      inputs
+      // {
+        self =
+          outputs
+          // {
+            outPath = dirOf flakeNix;
+            inherit inputs;
+          };
+      }
+    );
   in
     outputs;
 

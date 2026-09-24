@@ -17,11 +17,10 @@
       if spec != null
       then spec.shellHook
       else (shell.shellHook or "");
-    envOk =
-      lib.all (
-        name:
-          (shellEnv.${name} or shell.${name} or null) == env.${name}
-      ) (builtins.attrNames env);
+    envOk = lib.all (
+      name:
+        (shellEnv.${name} or shell.${name} or null) == env.${name}
+    ) (builtins.attrNames env);
     hooksOk = lib.all (needle: lib.hasInfix needle hook) hookContains;
   in
     assert lib.assertMsg ((shell.type or null) == "derivation")
