@@ -45,10 +45,7 @@
           inherit pkgs;
           lib = self.lib;
         };
-        treefmt = inputs.treefmt-nix.lib.evalModule pkgs {
-          imports = [self.treefmtModules.nix self.treefmtModules.toml];
-          projectRootFile = "flake.nix";
-        };
+        treefmt = inputs.treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix);
       in {
         packages = {
           harbor-opencode = harborOpencode;

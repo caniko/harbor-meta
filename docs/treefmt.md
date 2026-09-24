@@ -113,3 +113,72 @@ nix build .#checks.x86_64-linux.treefmt-modules --no-link \
 Run module evaluations on each repository's declared systems; building a
 Linux formatter does not prove Darwin execution. Lock refreshes and runtime
 checks are required before calling the coordinated rollout complete.
+
+## Agent Formatter Policy
+
+LLM agents must format through `treefmt` — locally, or fleet-wide through
+`canix workspace format` — and never invoke a formatter directly.
+`harbor-opencode sync` renders the deny fragment into each project's
+`.opencode/opencode.jsonc` under `permission.bash`;
+`harbor-opencode check` and `harbor-opencode rollout [--check]` verify it.
+Projects whose kind detection finds neither Rust nor Python get a
+policy-only config (kind `none`: the deny fragment without any `lsp` block),
+so coverage is language-independent.
+
+Harbor owns this project-side policy. The Home Manager global policy
+(`agent_safety.nix`) is deliberately untouched and still allows several of
+these tools: opencode concatenates permissions across config documents and
+evaluates them last-match-wins over the cascade `global < explicit < direct
+< project < content`, so the project deny beats a global allow regardless of
+alphabet; a matching deny is also checked before any session "always allow"
+approval. Unmatched commands fall through to `ask`, which is why the fragment
+has no `"*": "deny"` or `"*": "ask"` catch-all.
+
+Each pattern is rendered bare, with an `*=* ` environment prefix (the
+deployed matcher has no dedicated assignment parser, so the prefix must be
+spelled out), and — unless `storePathTwins = false` — through
+`/nix/store/*/bin/…` and `./result/bin/…`, both plain and `*=* `-prefixed.
+The `ruff check *--fix*` rule is argument-aware: a plain `ruff check .` lint
+stays allowed. Multi-purpose tools are denied only at their formatting
+subcommand, so build, test, plan, and lint invocations are unaffected.
+
+| Denied pattern | Owner |
+| --- | --- |
+| `alejandra *` | harbor-meta `treefmtModules.nix` (Alejandra) |
+| `taplo *` | harbor-meta `treefmtModules.toml` (Taplo) |
+| `rustfmt *` | harbor-rs `treefmtModules.rust` (rustfmt) |
+| `cargo fmt *` | harbor-rs `treefmtModules.rust` (rustfmt via cargo) |
+| `prettier *` | harbor-js `treefmtModules.javascript` (Prettier) |
+| `npx prettier *` | harbor-js `treefmtModules.javascript` (exec twin) |
+| `pnpm exec prettier *` | harbor-js `treefmtModules.javascript` (exec twin) |
+| `pnpm dlx prettier *` | harbor-js `treefmtModules.javascript` (exec twin) |
+| `yarn dlx prettier *` | harbor-js `treefmtModules.javascript` (exec twin) |
+| `bunx prettier *` | harbor-js `treefmtModules.javascript` (exec twin) |
+| `ruff format *` | harbor-py `treefmtModules.python` (Ruff format) |
+| `ruff check *--fix*` | harbor-py `treefmtModules.python` (lint fix writes) |
+| `google-java-format *` | harbor-android `treefmtModules.java` |
+| `ktfmt *` | harbor-android `treefmtModules.kotlin` |
+| `forge fmt *` | harbor-eth `treefmtModules.solidity` (Forge fmt) |
+| `latexindent *` | harbor-tex `treefmtModules.latex` |
+| `deadnix *` | fleet treefmt programs (canix-toolbelt `flake-modules/formatters.nix`) |
+| `gofmt *` | fleet treefmt programs (canix-toolbelt `flake-modules/formatters.nix`) |
+| `just --fmt *` | fleet treefmt programs (canix-toolbelt `flake-modules/formatters.nix`) |
+| `statix *` | fleet treefmt programs (canix-toolbelt `flake-modules/formatters.nix`) |
+| `terraform fmt *` | fleet treefmt programs (canix-toolbelt `flake-modules/formatters.nix`) |
+| `shfmt *` | root policy (`agent_safety.nix`; treefmt `--fail-on-change` is the gate) |
+| `shfmt -d *` | root policy (the globally allowed read-only shape) |
+| `tofu fmt *` | root policy (OpenTofu formatting) |
+| `go fmt *` | root policy (Go formatting) |
+| `nix fmt *` | root policy (`nix fmt` realises arbitrary flake outputs) |
+
+Every Harbor-rendered config also carries the top-level marker
+`"harbor.meta/opencode-config": "1"`. `harbor-opencode sync` refuses to
+overwrite an existing config that lacks the marker (a hand-written config)
+unless `--force` is passed, and reports such files as `custom` during
+`rollout`. The marker key itself is ignored at runtime: opencode's config
+normalizer only copies known top-level keys into the effective config.
+
+Rollout status is reported as `ok`/`stale`/`missing`/`custom` per repository
+plus a summary line; dirty working trees are `blocked` in sync mode and
+annotated ` (dirty)` in read-only `--check` mode. Dirty repositories are
+coordination-blocked and reported separately — never silently dropped.
