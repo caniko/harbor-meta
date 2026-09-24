@@ -222,9 +222,9 @@ in
       # sync renders the detected profile; check agrees.
       harbor-opencode sync --kind detect --root d-alpha
       cfg=d-alpha/.opencode/opencode.jsonc
-      must_grep cfg '"fixture-alpha-lsp":{"command":["fixture-alpha-lsp"]}'
-      must_not_grep cfg fixture-beta-lsp
-      must_not_grep cfg openpencil
+      must_grep "$cfg" '"fixture-alpha-lsp":{"command":["fixture-alpha-lsp"]}'
+      must_not_grep "$cfg" fixture-beta-lsp
+      must_not_grep "$cfg" openpencil
       harbor-opencode check --kind detect --root d-alpha
 
       # Explicit kinds normalize to registry order: `beta,alpha` renders
@@ -243,14 +243,14 @@ in
       # The openpencil flag flips the render in both directions.
       harbor-opencode sync --kind alpha --openpencil --root d-op
       ocfg=d-op/.opencode/opencode.jsonc
-      must_grep ocfg openpencil-desktop
-      must_grep ocfg fixture-alpha-lsp
-      must_not_grep ocfg '"mode":"subagent"'
+      must_grep "$ocfg" openpencil-desktop
+      must_grep "$ocfg" fixture-alpha-lsp
+      must_not_grep "$ocfg" '"mode":"subagent"'
       harbor-opencode check --kind alpha --openpencil --root d-op
       expect_die 'plain check must see the openpencil render as stale' \
         harbor-opencode check --kind alpha --root d-op
       harbor-opencode sync --kind alpha --root d-op
-      must_not_grep ocfg openpencil-desktop
+      must_not_grep "$ocfg" openpencil-desktop
 
       # An in-sync sync must skip the write entirely (mtime untouched).
       acfg=d-alpha/.opencode/opencode.jsonc
@@ -294,7 +294,7 @@ in
         /* block comment */ "${marker}": "${markerValue}",
         "custom": true
       }' > d-jsonc/.opencode/opencode.jsonc
-      printf '%s\n' '{ not json at all' > d-broken/.opencode/opencode.jsonc
+      printf '%s\n' '{ not json at all "custom": true' > d-broken/.opencode/opencode.jsonc
       printf '%s\n' '{"note": "${marker}", "custom": true}' > d-strval/.opencode/opencode.jsonc
       expect_die "d-broken check must fail" \
         harbor-opencode check --kind detect --root d-broken
@@ -332,9 +332,9 @@ in
       mkdir -p proj
       harbor-opencode sync --kind detect --root proj
       cfg=proj/.opencode/opencode.jsonc
-      must_grep cfg '"${marker}":"${markerValue}"'
-      must_grep cfg '"alejandra *":"deny"'
-      must_not_grep cfg '"lsp"'
+      must_grep "$cfg" '"${marker}":"${markerValue}"'
+      must_grep "$cfg" '"alejandra *":"deny"'
+      must_not_grep "$cfg" '"lsp"'
       harbor-opencode check --kind detect --root proj
       expect_detect none proj
 
