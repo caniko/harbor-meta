@@ -832,23 +832,42 @@ in
       must_grep run5.log 'total=5 ok=5 stale=0 missing=0 custom=0 dirty=0'
 
       # Malformed JSONC stays custom through rollout and is preserved
-      # byte-for-byte in a clean repo (dirty-tree rejection cannot be the
-      # reason preservation passes here).
-      mkdir -p fleet2/malformedproj
+      # byte-for-byte in clean repos (dirty-tree rejection cannot be the
+      # reason preservation passes here). Cover all three split-token
+      # shapes from sync-check: tru/**/e, 1/**/2, and unterminated comment.
+      mkdir -p fleet2/malformedproj fleet2/malformednumproj fleet2/malformedunclosedproj
       g -C fleet2/malformedproj init -q
-      mkdir -p fleet2/malformedproj/.opencode
+      g -C fleet2/malformednumproj init -q
+      g -C fleet2/malformedunclosedproj init -q
+      mkdir -p fleet2/malformedproj/.opencode fleet2/malformednumproj/.opencode fleet2/malformedunclosedproj/.opencode
       printf '%s\n' '{"${marker}":"${markerValue}","custom":tru/**/e}' > fleet2/malformedproj/.opencode/opencode.jsonc
-      cp fleet2/malformedproj/.opencode/opencode.jsonc fleet2.before
+      printf '%s\n' '{"${marker}":"${markerValue}","custom":true,"n":1/**/2}' > fleet2/malformednumproj/.opencode/opencode.jsonc
+      printf '%s\n' '{"${marker}":"${markerValue}","custom":true}' '/* unterminated comment' > fleet2/malformedunclosedproj/.opencode/opencode.jsonc
+      cp fleet2/malformedproj/.opencode/opencode.jsonc fleet2.before-split-true
+      cp fleet2/malformednumproj/.opencode/opencode.jsonc fleet2.before-split-num
+      cp fleet2/malformedunclosedproj/.opencode/opencode.jsonc fleet2.before-unclosed
       g -C fleet2/malformedproj add -A
       g -C fleet2/malformedproj commit -qm init
+      g -C fleet2/malformednumproj add -A
+      g -C fleet2/malformednumproj commit -qm init
+      g -C fleet2/malformedunclosedproj add -A
+      g -C fleet2/malformedunclosedproj commit -qm init
       if harbor-opencode rollout --root fleet2 --check > run-malformed-check.log 2>&1; then
         echo "malformed rollout --check exited 0" >&2
         cat run-malformed-check.log >&2
         exit 1
       fi
-      must_grep run-malformed-check.log 'total=1 ok=0 stale=0 missing=0 custom=1 dirty=0'
-      if ! cmp -s fleet2.before fleet2/malformedproj/.opencode/opencode.jsonc; then
-        echo "malformed config changed by rollout --check" >&2
+      must_grep run-malformed-check.log 'total=3 ok=0 stale=0 missing=0 custom=3 dirty=0'
+      if ! cmp -s fleet2.before-split-true fleet2/malformedproj/.opencode/opencode.jsonc; then
+        echo "malformed split-true config changed by rollout --check" >&2
+        exit 1
+      fi
+      if ! cmp -s fleet2.before-split-num fleet2/malformednumproj/.opencode/opencode.jsonc; then
+        echo "malformed split-num config changed by rollout --check" >&2
+        exit 1
+      fi
+      if ! cmp -s fleet2.before-unclosed fleet2/malformedunclosedproj/.opencode/opencode.jsonc; then
+        echo "malformed unclosed config changed by rollout --check" >&2
         exit 1
       fi
       if harbor-opencode rollout --root fleet2 > run-malformed.log 2>&1; then
@@ -856,9 +875,17 @@ in
         cat run-malformed.log >&2
         exit 1
       fi
-      must_grep run-malformed.log 'custom=1'
-      if ! cmp -s fleet2.before fleet2/malformedproj/.opencode/opencode.jsonc; then
-        echo "malformed config changed by refused rollout" >&2
+      must_grep run-malformed.log 'custom=3'
+      if ! cmp -s fleet2.before-split-true fleet2/malformedproj/.opencode/opencode.jsonc; then
+        echo "malformed split-true config changed by refused rollout" >&2
+        exit 1
+      fi
+      if ! cmp -s fleet2.before-split-num fleet2/malformednumproj/.opencode/opencode.jsonc; then
+        echo "malformed split-num config changed by refused rollout" >&2
+        exit 1
+      fi
+      if ! cmp -s fleet2.before-unclosed fleet2/malformedunclosedproj/.opencode/opencode.jsonc; then
+        echo "malformed unclosed config changed by refused rollout" >&2
         exit 1
       fi
 
