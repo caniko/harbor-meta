@@ -287,9 +287,10 @@ in
 
       # JSONC ownership: a marked config with comments is owned (stale, not
       # custom) and syncs without --force; unparsable bytes, an unterminated
-      # block comment, and a marker that appears only as a string value stay
-      # custom and refused.
-      mkdir -p d-jsonc/.opencode d-broken/.opencode d-strval/.opencode d-unclosed/.opencode
+      # block comment, comments joining split tokens, and a marker that
+      # appears only as a string value stay custom and refused. Comments are
+      # whitespace, never token joiners.
+      mkdir -p d-jsonc/.opencode d-broken/.opencode d-strval/.opencode d-unclosed/.opencode d-split-true/.opencode d-split-num/.opencode d-quoted/.opencode
       printf '%s\n' '{
         // owned config with a comment: marker is a real top-level key
         /* block comment */ "${marker}": "${markerValue}",
@@ -298,15 +299,29 @@ in
       printf '%s\n' '{ not json at all "custom": true' > d-broken/.opencode/opencode.jsonc
       printf '%s\n' '{"note": "${marker}", "custom": true}' > d-strval/.opencode/opencode.jsonc
       printf '%s\n' '{"${marker}":"${markerValue}","custom":true}' '/* unterminated comment' > d-unclosed/.opencode/opencode.jsonc
+      printf '%s\n' '{"${marker}":"${markerValue}","custom":tru/**/e}' > d-split-true/.opencode/opencode.jsonc
+      printf '%s\n' '{"${marker}":"${markerValue}","custom":true,"n":1/**/2}' > d-split-num/.opencode/opencode.jsonc
+      printf '%s\n' '{"${marker}":"${markerValue}","note":"/* not a comment // still not","quote":"a\"b","custom":true}' > d-quoted/.opencode/opencode.jsonc
       expect_die "d-broken check must fail" \
         harbor-opencode check --kind detect --root d-broken
       expect_die "d-unclosed check must fail" \
         harbor-opencode check --kind detect --root d-unclosed
+      expect_die "d-split-true check must fail" \
+        harbor-opencode check --kind detect --root d-split-true
+      expect_die "d-split-num check must fail" \
+        harbor-opencode check --kind detect --root d-split-num
       harbor-opencode sync --kind detect --root d-jsonc
       must_grep d-jsonc/.opencode/opencode.jsonc '"${marker}":"${markerValue}"'
-      for d in d-broken d-strval d-unclosed; do
+      harbor-opencode sync --kind detect --root d-quoted
+      must_grep d-quoted/.opencode/opencode.jsonc '"${marker}":"${markerValue}"'
+      for d in d-broken d-strval d-unclosed d-split-true d-split-num; do
+        cp "$d/.opencode/opencode.jsonc" "$d.before"
         expect_die "$d must be refused without --force" \
           harbor-opencode sync --kind detect --root "$d"
+        if ! cmp -s "$d.before" "$d/.opencode/opencode.jsonc"; then
+          echo "$d was modified by refused sync" >&2
+          exit 1
+        fi
         must_grep "$d/.opencode/opencode.jsonc" '"custom"'
         harbor-opencode sync --kind detect --force --root "$d"
         must_grep "$d/.opencode/opencode.jsonc" '"${marker}":"${markerValue}"'
@@ -815,6 +830,37 @@ in
         exit 1
       fi
       must_grep run5.log 'total=5 ok=5 stale=0 missing=0 custom=0 dirty=0'
+
+      # Malformed JSONC stays custom through rollout and is preserved
+      # byte-for-byte in a clean repo (dirty-tree rejection cannot be the
+      # reason preservation passes here).
+      mkdir -p fleet2/malformedproj
+      g -C fleet2/malformedproj init -q
+      mkdir -p fleet2/malformedproj/.opencode
+      printf '%s\n' '{"${marker}":"${markerValue}","custom":tru/**/e}' > fleet2/malformedproj/.opencode/opencode.jsonc
+      cp fleet2/malformedproj/.opencode/opencode.jsonc fleet2.before
+      g -C fleet2/malformedproj add -A
+      g -C fleet2/malformedproj commit -qm init
+      if harbor-opencode rollout --root fleet2 --check > run-malformed-check.log 2>&1; then
+        echo "malformed rollout --check exited 0" >&2
+        cat run-malformed-check.log >&2
+        exit 1
+      fi
+      must_grep run-malformed-check.log 'total=1 ok=0 stale=0 missing=0 custom=1 dirty=0'
+      if ! cmp -s fleet2.before fleet2/malformedproj/.opencode/opencode.jsonc; then
+        echo "malformed config changed by rollout --check" >&2
+        exit 1
+      fi
+      if harbor-opencode rollout --root fleet2 > run-malformed.log 2>&1; then
+        echo "malformed rollout exited 0" >&2
+        cat run-malformed.log >&2
+        exit 1
+      fi
+      must_grep run-malformed.log 'custom=1'
+      if ! cmp -s fleet2.before fleet2/malformedproj/.opencode/opencode.jsonc; then
+        echo "malformed config changed by refused rollout" >&2
+        exit 1
+      fi
 
       # A git that cannot answer must fail closed as foreign dirt instead
       # of silently treating the tree as clean.

@@ -270,9 +270,11 @@
     # `stale` (an older harbor render, or the same document with comments)
     # and is safe to overwrite. Ownership parsing is JSONC-aware: `//`
     # line comments and `/* */` block comments outside strings are
-    # stripped before the top-level marker check, so a valid marked
-    # config with comments is `stale`, not `custom`. Trailing commas
-    # stay unparsable and fail closed as `custom`.
+    # replaced with whitespace before the top-level marker check, so a
+    # valid marked config with comments is `stale`, not `custom`.
+    # Comments never join tokens: `tru/**/e` stays two fragments and
+    # fails parsing. Trailing commas stay unparsable and fail closed
+    # as `custom`.
     #
     # The stripper below respects double-quoted strings and backslash
     # escapes, so marker-looking text inside a string value can never
@@ -316,14 +318,23 @@
         if c == "/" and nxt == "*":
             i += 2
             closed = False
+            newlines = 0
             while i < n:
                 if src[i] == "*" and i + 1 < n and src[i + 1] == "/":
                     closed = True
                     break
+                if src[i] == "\n":
+                    newlines += 1
                 i += 1
             if not closed:
                 sys.exit(1)
             i += 2
+            # JSONC comments are whitespace, never token joiners: replace
+            # the comment with a space (plus any newlines it contained) so
+            # `tru/**/e` cannot become `true`.
+            out.append(" ")
+            for _ in range(newlines):
+                out.append("\n")
             continue
         out.append(c)
         i += 1
