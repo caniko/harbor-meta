@@ -315,9 +315,15 @@
             continue
         if c == "/" and nxt == "*":
             i += 2
-            while i < n and not (src[i] == "*" and i + 1 < n and src[i + 1] == "/"):
+            closed = False
+            while i < n:
+                if src[i] == "*" and i + 1 < n and src[i + 1] == "/":
+                    closed = True
+                    break
                 i += 1
-            i += 2 if i < n else 0
+            if not closed:
+                sys.exit(1)
+            i += 2
             continue
         out.append(c)
         i += 1

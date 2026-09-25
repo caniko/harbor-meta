@@ -286,9 +286,10 @@ in
       done
 
       # JSONC ownership: a marked config with comments is owned (stale, not
-      # custom) and syncs without --force; unparsable bytes and a marker
-      # that appears only as a string value stay custom and refused.
-      mkdir -p d-jsonc/.opencode d-broken/.opencode d-strval/.opencode
+      # custom) and syncs without --force; unparsable bytes, an unterminated
+      # block comment, and a marker that appears only as a string value stay
+      # custom and refused.
+      mkdir -p d-jsonc/.opencode d-broken/.opencode d-strval/.opencode d-unclosed/.opencode
       printf '%s\n' '{
         // owned config with a comment: marker is a real top-level key
         /* block comment */ "${marker}": "${markerValue}",
@@ -296,11 +297,14 @@ in
       }' > d-jsonc/.opencode/opencode.jsonc
       printf '%s\n' '{ not json at all "custom": true' > d-broken/.opencode/opencode.jsonc
       printf '%s\n' '{"note": "${marker}", "custom": true}' > d-strval/.opencode/opencode.jsonc
+      printf '%s\n' '{"${marker}":"${markerValue}","custom":true}' '/* unterminated comment' > d-unclosed/.opencode/opencode.jsonc
       expect_die "d-broken check must fail" \
         harbor-opencode check --kind detect --root d-broken
+      expect_die "d-unclosed check must fail" \
+        harbor-opencode check --kind detect --root d-unclosed
       harbor-opencode sync --kind detect --root d-jsonc
       must_grep d-jsonc/.opencode/opencode.jsonc '"${marker}":"${markerValue}"'
-      for d in d-broken d-strval; do
+      for d in d-broken d-strval d-unclosed; do
         expect_die "$d must be refused without --force" \
           harbor-opencode sync --kind detect --root "$d"
         must_grep "$d/.opencode/opencode.jsonc" '"custom"'
