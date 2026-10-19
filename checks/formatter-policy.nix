@@ -12,7 +12,7 @@
     tree.config.settings.formatter
     // {
       direct = {
-        command = "/bin/alejandra";
+        command = pkgs.lib.getExe pkgs.alejandra;
         options = ["--check" "."];
       };
     };
@@ -29,7 +29,8 @@
   blanket = evaluate (bashMap // {"*" = "deny";});
 in
   assert fixtures.ok;
-  assert valid.report.uncovered == [] && valid.report.unattributable == [];
+  assert pkgs.lib.assertMsg (valid.report.uncovered == [] && valid.report.unattributable == [])
+  "formatter-policy: ${builtins.toJSON valid.report}";
   assert valid.report.envTwinNecessary && valid.report.pathTwinNecessary;
   assert missing.report.uncovered != [] && missing.report.unattributable == [];
   assert permissive.report.nonDeny == ["alejandra *"];
