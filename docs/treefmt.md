@@ -116,6 +116,24 @@ checks are required before calling the coordinated rollout complete.
 
 ## Agent Formatter Policy
 
+`lib.opencode.formatterPolicy` supplies the shared consumer-check engine:
+
+- `mkResolver { inherit pkgs; } config` binds command resolution to the
+  consumer's evaluated `config.treefmt.programs.just`. Unknown shell wrappers,
+  multiline invocations, and nondefault Just indentation fail closed.
+- `coverage { formatters; resolveDirect; bashMap; }` returns uncovered commands,
+  non-deny entries, mutation attribution, environment/path twin necessity, and
+  a serializable `report`. Consumers enforce these results against their actual
+  formatter settings and committed permission map.
+- `fixtures { inherit pkgs config; treefmt-nix = inputs.treefmt-nix; }` returns
+  `ok` and a source-hashed `report`, exercising the real pinned treefmt module
+  with package and indentation overrides. Force `ok` before accepting its report.
+
+`checks.<system>.formatter-policy` covers the engine with direct and Just
+invocations, negative resolver probes, missing coverage, permissive entries,
+and blanket-deny mutations. Consumer-specific LSP requirements and committed
+configuration drift checks belong in the consuming repository.
+
 LLM agents must format through `treefmt` — locally, or fleet-wide through
 `canix workspace format` — and never invoke a formatter directly.
 `harbor-opencode sync` renders the deny fragment into each project's
