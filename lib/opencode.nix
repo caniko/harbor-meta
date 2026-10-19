@@ -62,6 +62,7 @@
     "harbor-meta.opencode: profile `${name}` packages must be a function `pkgs: [...]\""; packages;
   };
 in {
+  formatterPolicy = import ./formatter-policy.nix {inherit lib formatPolicy;};
   inherit
     schema
     formatPolicy
