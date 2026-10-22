@@ -50,11 +50,18 @@
         treefmt = inputs.treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix);
       in {
         packages = {
+          harbor-evidence = import ./package.nix {inherit pkgs;};
+          harbor = self.packages.${system}.harbor-evidence;
           harbor-opencode = harborOpencode;
+          nix-direnv = import ./nix/direnv/package.nix {inherit pkgs;};
           default = harborOpencode;
         };
 
         apps = {
+          harbor = {
+            type = "app";
+            program = "${self.packages.${system}.harbor-evidence}/bin/harbor";
+          };
           harbor-opencode = {
             type = "app";
             program = "${harborOpencode}/bin/harbor-opencode";
@@ -68,7 +75,23 @@
             inherit (self) lib;
             inherit harborOpencode;
           })
+          // import ./checks/direnv.nix {
+            inherit pkgs;
+            nixDirenv = self.packages.${system}.nix-direnv;
+          }
           // {
+            timezone = import ./checks/timezone.nix {
+              inherit pkgs;
+              inherit (self) lib;
+            };
+            standalone-root = assert import ./tests/standalone-root.nix {inherit (self.lib) standaloneRoot;};
+              pkgs.writeText "harbor-standalone-root" "ok";
+            # tests/timezone-consumers.nix spans sibling components; the harbor
+            # superproject root owns that check.
+            dev-shell-bash = import ./checks/dev-shell-bash.nix {
+              inherit pkgs;
+              inherit (self.lib) devShell;
+            };
             site = import ./checks/site.nix {inherit pkgs system;};
             treefmt-modules = import ./checks/treefmt.nix {
               inherit pkgs;

@@ -3,6 +3,7 @@
   opencodeEngine = import ./opencode.nix {lib = nixLib;};
 in {
   flake = import ./flake.nix {lib = nixLib;};
+  timezone = import ./timezone.nix;
   opencode =
     opencodeEngine
     // (import ./opencode-cli.nix {
@@ -15,4 +16,5 @@ in {
   devShellTests = import ./dev-shell-tests.nix {lib = nixLib;};
   templateTests = import ./template-tests.nix {lib = nixLib;};
   treefmtScope = import ./treefmt-scope.nix {lib = nixLib;};
+  standaloneRoot = import ./standalone-root.nix {lib = nixLib;};
 }
