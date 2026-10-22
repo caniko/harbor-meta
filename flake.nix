@@ -84,11 +84,8 @@
               inherit pkgs;
               inherit (self) lib;
             };
-            timezone-consumers = let
-              results = import ./tests/timezone-consumers.nix;
-            in
-              assert builtins.all (value: value) (builtins.attrValues results);
-                pkgs.writeText "harbor-timezone-consumers.json" (builtins.toJSON results);
+            # tests/timezone-consumers.nix spans sibling components; the harbor
+            # superproject root owns that check.
             dev-shell-bash = import ./checks/dev-shell-bash.nix {
               inherit pkgs;
               inherit (self.lib) devShell;
