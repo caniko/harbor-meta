@@ -16,4 +16,5 @@ in {
   devShellTests = import ./dev-shell-tests.nix {lib = nixLib;};
   templateTests = import ./template-tests.nix {lib = nixLib;};
   treefmtScope = import ./treefmt-scope.nix {lib = nixLib;};
+  standaloneRoot = import ./standalone-root.nix {lib = nixLib;};
 }

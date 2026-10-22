@@ -84,6 +84,8 @@
               inherit pkgs;
               inherit (self) lib;
             };
+            standalone-root = assert import ./tests/standalone-root.nix {inherit (self.lib) standaloneRoot;};
+              pkgs.writeText "harbor-standalone-root" "ok";
             # tests/timezone-consumers.nix spans sibling components; the harbor
             # superproject root owns that check.
             dev-shell-bash = import ./checks/dev-shell-bash.nix {
