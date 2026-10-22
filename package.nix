@@ -2,10 +2,8 @@
 pkgs.rustPlatform.buildRustPackage {
   pname = "harbor-evidence";
   version = "0.1.0";
-  src = pkgs.lib.cleanSource ../..;
-  cargoLock.lockFile = ../../Cargo.lock;
-  cargoBuildFlags = ["-p" "harbor-evidence"];
-  cargoTestFlags = ["-p" "harbor-evidence"];
+  src = pkgs.lib.cleanSource ./crates/harbor-evidence;
+  cargoLock.lockFile = ./crates/harbor-evidence/Cargo.lock;
   strictDeps = true;
   meta = {
     description = "Shared Harbor development and production artifact contracts";
