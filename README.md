@@ -7,6 +7,9 @@ Shared harbor helpers for editor and agent tooling.
 Formatting uses independent [treefmt modules](docs/treefmt.md), composed
 explicitly by each repository rather than inherited from a parent Harbor.
 
+[Timezone environments](docs/timezone.md) supply configurable `TZ` and a
+Nix-packaged `TZDIR` for shells, builders and runtime wrappers, defaulting to UTC.
+
 [Command-scoped runtimes](docs/scoped-runtime.md) isolate loader and driver
 settings and define dependency-preserving composition of language shells.
 
