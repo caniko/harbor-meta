@@ -84,6 +84,11 @@
             nixDirenv = self.packages.${system}.nix-direnv;
           }
           // {
+            formatter-policy = import ./checks/formatter-policy.nix {
+              inherit pkgs;
+              inherit (self) lib;
+              inherit (inputs) treefmt-nix;
+            };
             timezone = import ./checks/timezone.nix {
               inherit pkgs;
               inherit (self) lib;
