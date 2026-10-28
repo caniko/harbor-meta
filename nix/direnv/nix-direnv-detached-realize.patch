@@ -1,7 +1,7 @@
 diff --git a/share/nix-direnv/direnvrc b/share/nix-direnv/direnvrc
 --- a/share/nix-direnv/direnvrc
 +++ b/share/nix-direnv/direnvrc
-@@ -210,6 +210,70 @@
+@@ -210,6 +210,92 @@
    done
  }
  
@@ -11,17 +11,39 @@ diff --git a/share/nix-direnv/direnvrc b/share/nix-direnv/direnvrc
 +  echo "${sum:0:16}"
 +}
 +
++# The staleness test use_flake/use_nix ran before taking the renewal lock.
++# Repeated under the lock, it lets activations queued behind a renewal use
++# its result instead of each renewing again.
++_nix_cache_current() {
++  local profile=$1 profile_rc=$2 file
++  shift 2
++  [[ -e $profile && -e $profile_rc ]] || return 1
++  for file in "$@"; do
++    [[ $file -nt $profile_rc ]] && return 1
++  done
++  return 0
++}
++
 +# Serialize renewals of one profile for the rest of this direnv run, so a
 +# concurrent activation cannot remove this renewal's profile links. Called
 +# outside the command substitution that runs _nix_print_dev_env. Never
-+# unlinked: flock state belongs to the inode.
++# unlinked: flock state belongs to the inode. The holder records itself in a
++# sibling .owner file, so a waiter can say what it is waiting for.
 +declare -gA _nix_direnv_realize_locks=()
 +_nix_realize_lock() {
-+  local lock fd
++  local lock fd owner
 +  lock="${1%/*}/.realize-$(_nix_realize_id "$1").lock"
++  owner="${lock%.lock}.owner"
 +  [[ -v _nix_direnv_realize_locks["$lock"] ]] && return 0
-+  if exec {fd}>>"$lock" && @flock@ "$fd"; then
++  if exec {fd}>>"$lock" && {
++    @flock@ -n "$fd" || {
++      _nix_direnv_info "waiting for a concurrent renewal: $(@coreutils@/bin/cat "$owner" 2>/dev/null || echo "unknown holder"); log: $1.log"
++      @flock@ "$fd"
++    }
++  }; then
 +    _nix_direnv_realize_locks["$lock"]=$fd
++    printf 'pid %s since %s (%s)\n' "$$" "$(@coreutils@/bin/date -Is)" \
++      "$(@coreutils@/bin/tr '\0' ' ' </proc/$PPID/cmdline 2>/dev/null)" >"$owner" 2>/dev/null || true
 +  else
 +    # Unserialized renewals still work, and failures still reach the fallback.
 +    _nix_direnv_warning "could not lock ${lock}; concurrent renewals are not serialized"
@@ -72,7 +94,7 @@ diff --git a/share/nix-direnv/direnvrc b/share/nix-direnv/direnvrc
  _nix_add_gcroot() {
    local storepath=$1
    local symlink=$2
-@@ -375,8 +439,9 @@
+@@ -375,14 +461,19 @@
  
      else
        local tmp_profile_rc
@@ -80,11 +102,21 @@ diff --git a/share/nix-direnv/direnvrc b/share/nix-direnv/direnvrc
 -      if tmp_profile_rc=$(_nix print-dev-env --profile "$tmp_profile" "$@"); then
 +      local tmp_profile="${layout_dir}/flake-tmp-profile$(_nix_argsum_suffix "$flake_expr")"
 +      _nix_realize_lock "$tmp_profile"
-+      if tmp_profile_rc=$(_nix_print_dev_env "$tmp_profile" "$@"); then
++      if _nix_cache_current "$profile" "$profile_rc" "${watches[@]}"; then
++        _nix_direnv_info "Using cached dev shell (renewed by a concurrent activation)"
++        _nix_refresh_gcroots
++      elif tmp_profile_rc=$(_nix_print_dev_env "$tmp_profile" "$@"); then
          # If we've gotten here, the user's current devShell is valid and we should cache it
          # Retain the previous cache and its roots until renewal succeeds.
  
-@@ -585,7 +650,7 @@
+         # also add garbage collection root for source
+         local flake_input_paths
+         @coreutils@/bin/mkdir -p "$flake_inputs"
++        _nix_direnv_info "archiving flake inputs"
+         flake_input_paths=$(_nix flake archive \
+           --json --no-write-lock-file \
+           -- "$flake_uri") || return 1
+@@ -585,7 +676,7 @@
      if [[ $_nix_direnv_manual_reload -eq 1 && -z ${_nix_direnv_force_reload-} ]]; then
        _nix_direnv_warn_manual_reload "$profile_rc"
      else
@@ -93,7 +125,7 @@ diff --git a/share/nix-direnv/direnvrc b/share/nix-direnv/direnvrc
        local tmp_profile_rc
        if [[ -n $packages ]]; then
          extra_args+=("--expr" "with import <nixpkgs> {}; mkShell { buildInputs = [ $packages ]; }")
-@@ -601,11 +666,8 @@
+@@ -601,11 +692,11 @@
        # This allows us to more closely mimic nix-shell.
        export IN_NIX_SHELL="impure"
  
@@ -103,7 +135,10 @@ diff --git a/share/nix-direnv/direnvrc b/share/nix-direnv/direnvrc
 -        --impure \
 -        "${extra_args[@]}"); then
 +      _nix_realize_lock "$tmp_profile"
-+      if tmp_profile_rc=$(_nix_print_dev_env "$tmp_profile" --impure "${extra_args[@]}"); then
++      if _nix_cache_current "$profile" "$profile_rc" "${watches[@]}"; then
++        _nix_direnv_info "Using cached dev shell (renewed by a concurrent activation)"
++        _nix_refresh_gcroots
++      elif tmp_profile_rc=$(_nix_print_dev_env "$tmp_profile" --impure "${extra_args[@]}"); then
          _nix_clean_old_gcroots "$layout_dir"
  
          echo "$tmp_profile_rc" >"$profile_rc"
