@@ -67,6 +67,10 @@ concurrent)
   wait "$second"
   [[ $(grep '^INPUT=' first.out) == "$(grep '^INPUT=' second.out)" ]]
   grep -x 'INPUT=.*-direnv-input-v2' first.out
+  # Exactly one renewal: the waiter names its holder, then uses that result.
+  (($(cat first.out second.out | grep -c 'realizing in user unit') == 1))
+  grep -E 'waiting for a concurrent renewal: pid [0-9]+ since ' first.out second.out
+  grep -F 'renewed by a concurrent activation' first.out second.out
   ;;
 fallback)
   touch "$HOME/release"
