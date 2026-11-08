@@ -42,7 +42,7 @@ in {
     ];
     requiredInputs = ["harbor" "treefmt-nix"];
     commands = ["cargo" "rustc" "rust-analyzer" "cargo-clippy" "rustfmt" "python" "uv" "node" "npm" "treefmt"];
-    hookContains = ["uv sync" "RS_HARBOR_CARGO_HOME"];
+    hookContains = ["venv.py sync --venv" "RS_HARBOR_CARGO_HOME"];
   };
 
   template-polyglot-samples =
