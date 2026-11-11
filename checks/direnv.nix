@@ -98,6 +98,7 @@ in {
       machine.succeed("${as "alice" "renew"}")
       machine.succeed("${as "alice" "cached"}")
       machine.succeed("${as "alice" "concurrent"}")
+      machine.succeed("${as "alice" "contended"}")
       # Root has no user manager here: the plain inline call remains.
       machine.succeed("${as "root" "fallback"}")
     '';
