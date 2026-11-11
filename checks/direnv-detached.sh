@@ -72,6 +72,21 @@ concurrent)
   grep -E 'waiting for a concurrent renewal: pid [0-9]+ since ' first.out second.out
   grep -F 'renewed by a concurrent activation' first.out second.out
   ;;
+contended)
+  rm -f "$HOME/release"
+  sed -i 's/input-v2/input-v3/' flake.nix
+  activate >holder.out 2>&1 &
+  holder=$!
+  until (($(units) == 1)); do sleep 1; done
+  # A waiter gives up on a wedged renewal and keeps the previous environment.
+  NIX_DIRENV_REALIZE_WAIT=1 activate >waiter.out 2>&1
+  grep -F 'not renewing now' waiter.out
+  grep -F 'Falling back to previous environment' waiter.out
+  grep -x 'INPUT=.*-direnv-input-v2' waiter.out
+  touch "$HOME/release"
+  wait "$holder"
+  grep -x 'INPUT=.*-direnv-input-v3' holder.out
+  ;;
 fallback)
   touch "$HOME/release"
   sed -i 's/input-v[0-9]/input-root/' flake.nix
