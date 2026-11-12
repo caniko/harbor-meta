@@ -62,6 +62,14 @@ label = "NTT"
 href = "/ntt/"
 
 [[nav]]
+label = "LLM"
+href = "/llm/"
+
+[[nav]]
+label = "macOS SDK"
+href = "/macos-sdk-pin/"
+
+[[nav]]
 label = "Source"
 href = "https://github.com/caniko/harbor-meta"
 
@@ -189,11 +197,11 @@ intro = "Every harbor is a flake input. Policy stays in the project."
 
 [[pages.sections.steps]]
 title = "Add the input"
-description = "Pin the language flake you need, for example `github:caniko/harbor-rs`."
+description = "Pin the language flake you need, for example github:caniko/harbor-rs."
 
 [[pages.sections.steps]]
 title = "Call the helper"
-description = "Use `harbor-*.lib.mk…` for toolchains, shells, packages, or systemd units."
+description = "Use harbor-*.lib.mk… for toolchains, shells, packages, or systemd units."
 
 [[pages.sections.steps]]
 title = "Keep project policy local"
@@ -278,26 +286,26 @@ id = "surface"
 
 [[pages.sections.features]]
 title = "uv environments"
-description = "`mkUvVirtualEnv` and `mkUvCheckEnv` return immutable uv2nix environments. Use `${env}/bin/python`."
+description = "mkUvVirtualEnv and mkUvCheckEnv return immutable uv2nix environments. Use ${env}/bin/python."
 highlight = true
 
 [[pages.sections.features]]
 title = "Dev shells"
-description = "`mkUvDevShell` extraPackages are Nix tools only. Python deps stay in pyproject.toml and uv.lock."
+description = "mkUvDevShell extraPackages are Nix tools only. Python deps stay in pyproject.toml and uv.lock."
 
 [[pages.sections.features]]
 title = "Overrides"
-description = "Setuptools, Torch runtime, and TorchCodec FFmpeg helpers live under `pythonOverrides`."
+description = "Setuptools, Torch runtime, and TorchCodec FFmpeg helpers live under pythonOverrides."
 
 [[pages.sections.features]]
 title = "Template"
-description = "`nix flake init -t github:caniko/harbor-py` scaffolds a consumer."
+description = "nix flake init -t github:caniko/harbor-py scaffolds a consumer."
 
 [[pages.sections]]
 type = "install"
 id = "install"
 heading = "Add it"
-intro = "Pin harbor-py and call `harbor-py.lib` from your flake."
+intro = "Pin harbor-py and call harbor-py.lib from your flake."
 guide_href = "https://github.com/caniko/harbor-py"
 
 [[pages.sections.primary_routes]]
@@ -317,7 +325,7 @@ type = "hero"
 logo_src = "/harbor-mark.svg"
 title = "harbor-js"
 tagline = "Reusable JavaScript and Bun infrastructure for Nix flakes."
-subtitle = "The first maintained surface wraps bun-overlay. Node, pnpm, Yarn, and generic JS helpers can join later under `lib.bun` without a rename."
+subtitle = "The first maintained surface wraps bun-overlay. Node, pnpm, Yarn, and generic JS helpers can join later under lib.bun without a rename."
 
 [[pages.sections.ctas]]
 label = "Source"
@@ -330,26 +338,26 @@ id = "surface"
 
 [[pages.sections.features]]
 title = "mkBunPackage"
-description = "Keeps the upstream Bun binary unpatched on Linux and runs it through proot so `bun build --compile` works in Nix sandboxes."
+description = "Keeps the upstream Bun binary unpatched on Linux and runs it through proot so bun build --compile works in Nix sandboxes."
 highlight = true
 
 [[pages.sections.features]]
 title = "Toolchain"
-description = "`mkBunToolchain`, `mkBunDevShell`, `mkBunWorkspaceDeps`, and `readPackageManagerVersion`."
+description = "mkBunToolchain, mkBunDevShell, mkBunWorkspaceDeps, and readPackageManagerVersion."
 
 [[pages.sections.features]]
 title = "FHS runner"
-description = "`bun.passthru.fhsRunner` runs Bun-compiled Linux executables in checks or install hooks."
+description = "bun.passthru.fhsRunner runs Bun-compiled Linux executables in checks or install hooks."
 
 [[pages.sections.features]]
 title = "Pinned Bun"
-description = "`packages.<system>.bun_1_3_14` plus an x86_64-linux baseline build."
+description = "packages.<system>.bun_1_3_14 plus an x86_64-linux baseline build."
 
 [[pages.sections]]
 type = "install"
 id = "install"
 heading = "Add it"
-intro = "Start from the template or import `lib.bun` directly."
+intro = "Start from the template or import lib.bun directly."
 guide_href = "https://github.com/caniko/harbor-js"
 
 [[pages.sections.primary_routes]]
@@ -382,7 +390,7 @@ id = "surface"
 
 [[pages.sections.features]]
 title = "Project surface"
-description = "`services.harbor-db.projects.<name>` generates migrate and check units, then orders runtime services after them."
+description = "services.harbor-db.projects.<name> generates migrate and check units, then orders runtime services after them."
 highlight = true
 
 [[pages.sections.features]]
@@ -395,7 +403,7 @@ description = "Optional database URL, setup units, and runtime-role grants for P
 
 [[pages.sections.features]]
 title = "Pink Raven shape"
-description = "Keep SQLx behind `raven db migrate` and let harbor-db own users, grants, and unit order."
+description = "Keep SQLx behind raven db migrate and let harbor-db own users, grants, and unit order."
 
 [[pages.sections]]
 type = "install"
@@ -434,7 +442,7 @@ id = "surface"
 
 [[pages.sections.features]]
 title = "Profiles"
-description = "`cv`, `article`, `conference`, and `editor` TeX Live sets."
+description = "cv, article, conference, and editor TeX Live sets."
 highlight = true
 
 [[pages.sections.features]]
@@ -447,7 +455,7 @@ description = "Canonical anx Zenodo and Pandoc plugin packages live in this flak
 
 [[pages.sections.features]]
 title = "Systems"
-description = "Packages and checks for x86_64/aarch64 Linux and Darwin. `lib` is system-independent."
+description = "Packages and checks for x86_64/aarch64 Linux and Darwin. lib is system-independent."
 
 [[pages.sections]]
 type = "install"
@@ -486,20 +494,20 @@ id = "surface"
 
 [[pages.sections.features]]
 title = "Dev-shell fragments"
-description = "Language harbors merge `{ packages, env, shellHook }` and render with `lib.devShell.mkShell`."
+description = "Language harbors merge { packages, env, shellHook } and render with lib.devShell.mkShell."
 highlight = true
 
 [[pages.sections.features]]
 title = "Template tests"
-description = "`lib.devShellTests` and `lib.templateTests` import consumer `flake.nix` files with current inputs. No nested nix."
+description = "lib.devShellTests and lib.templateTests import consumer flake.nix files with current inputs. No nested nix."
 
 [[pages.sections.features]]
 title = "Opencode LSP"
-description = "Checked-in `.opencode/opencode.jsonc` declares LSPs. The direnv harbor shell supplies the binaries."
+description = "Checked-in .opencode/opencode.jsonc declares LSPs. The direnv harbor shell supplies the binaries."
 
 [[pages.sections.features]]
 title = "harbor-opencode"
-description = "`sync`, `check`, and `rollout` keep editor config aligned across trees."
+description = "sync, check, and rollout keep editor config aligned across trees."
 
 [[pages.sections]]
 type = "install"
@@ -525,7 +533,7 @@ type = "hero"
 logo_src = "/harbor-mark.svg"
 title = "harbor-android"
 tagline = "Reusable Android SDK, NDK, and APK helpers for Nix flakes."
-subtitle = "`rustToolchain` is an argument, usually from harbor-rs. This flake does not take harbor-rs as an input."
+subtitle = "rustToolchain is an argument, usually from harbor-rs. This flake does not take harbor-rs as an input."
 
 [[pages.sections.ctas]]
 label = "Source"
@@ -538,20 +546,20 @@ id = "surface"
 
 [[pages.sections.features]]
 title = "mkAndroidSdk"
-description = "One `composeAndroidPackages` from caller pkgs. Versions are required."
+description = "One composeAndroidPackages from caller pkgs. Versions are required."
 highlight = true
 
 [[pages.sections.features]]
 title = "Dev shell"
-description = "`mkAndroidDevShell` sets ANDROID_* plus cargo-ndk, JDK, and Gradle."
+description = "mkAndroidDevShell sets ANDROID_* plus cargo-ndk, JDK, and Gradle."
 
 [[pages.sections.features]]
 title = "APKs"
-description = "`mkAndroidApk`, `mkAndroidApkDevBuilder`, and `mkAndroidFlavorTable` for Rust cdylib + Gradle."
+description = "mkAndroidApk, mkAndroidApkDevBuilder, and mkAndroidFlavorTable for Rust cdylib + Gradle."
 
 [[pages.sections.features]]
 title = "Maven cache"
-description = "`findLocalMavenCache` optionally pins a host tarball by committed SHA-256."
+description = "findLocalMavenCache optionally pins a host tarball by committed SHA-256."
 
 [[pages.sections]]
 type = "install"
@@ -590,7 +598,7 @@ id = "surface"
 
 [[pages.sections.features]]
 title = "Foundry toolchain"
-description = "Packaged forge, cast, and anvil. `forge test` runs against the local backend."
+description = "Packaged forge, cast, and anvil. forge test runs against the local backend."
 highlight = true
 
 [[pages.sections.features]]
@@ -599,11 +607,11 @@ description = "Pinned Solidity compiler alongside Foundry."
 
 [[pages.sections.features]]
 title = "Dev shells"
-description = "Shells compose through `harbor-meta` fragments."
+description = "Shells compose through harbor-meta fragments."
 
 [[pages.sections.features]]
 title = "Template"
-description = "`nix flake init -t github:caniko/harbor-eth` scaffolds a consumer."
+description = "nix flake init -t github:caniko/harbor-eth scaffolds a consumer."
 
 [[pages.sections]]
 type = "install"
@@ -651,11 +659,11 @@ description = "Local validator for development and tests."
 
 [[pages.sections.features]]
 title = "Dev shells"
-description = "Shell composition comes from `harbor-meta`."
+description = "Shell composition comes from harbor-meta."
 
 [[pages.sections.features]]
 title = "Template"
-description = "`nix flake init -t github:caniko/harbor-sol` scaffolds a consumer."
+description = "nix flake init -t github:caniko/harbor-sol scaffolds a consumer."
 
 [[pages.sections]]
 type = "install"
@@ -699,7 +707,7 @@ highlight = true
 
 [[pages.sections.features]]
 title = "EVM and Solana builders"
-description = "`mkNtt` supplies both builders from caller pins."
+description = "mkNtt supplies both builders from caller pins."
 
 [[pages.sections.features]]
 title = "Isolated dev shell"
@@ -713,7 +721,7 @@ description = "Source, toolchain, audit pins, and acceptance stay with consumers
 type = "install"
 id = "install"
 heading = "Add it"
-intro = "Pin harbor-ntt and call `harbor-ntt.lib.mkNtt` from your flake."
+intro = "Pin harbor-ntt and call harbor-ntt.lib.mkNtt from your flake."
 guide_href = "https://github.com/caniko/harbor-ntt"
 
 [[pages.sections.primary_routes]]
@@ -751,7 +759,7 @@ highlight = true
 
 [[pages.sections.features]]
 title = "Explicit approval"
-description = "No `.envrc` evaluation or automatic approval; preparation runs the trusted hook visibly."
+description = "No .envrc evaluation or automatic approval; preparation runs the trusted hook visibly."
 
 [[pages.sections.features]]
 title = "Process-memory captures"
