@@ -159,6 +159,43 @@
 
   failReport = args: mustFail (scope.compose args).report;
 
+  nested = scope.compose {
+    inherit treefmt-nix pkgs;
+    centralPackages = {rustfmt = centralRustfmt;};
+    projects = [
+      {
+        name = "outer";
+        relPath = "fleet/proj-a";
+        modules = [{programs.alejandra.enable = true;}];
+      }
+      {
+        name = "inner";
+        relPath = "fleet/proj-a/nested";
+        modules = [{programs.alejandra.enable = true;}];
+      }
+    ];
+  };
+
+  # A helper that pins its own binary, like harbor-go's gofmt or harbor-tex's
+  # latexindent wrapper.
+  helperModule = {
+    settings.formatter.hello = {
+      command = "${pkgs.hello}/bin/hello";
+      includes = ["*.hello"];
+    };
+  };
+  helperArgs = {
+    inherit treefmt-nix pkgs;
+    helperModules = [helperModule];
+    projects = [
+      {
+        name = "uses-helper";
+        relPath = "fleet/helper";
+        modules = [helperModule];
+      }
+    ];
+  };
+
   # Standalone local wrappers built from the same fixtures and toolchain.
   # The runtime proof formats identical copies locally and globally, then
   # requires byte-identical trees.
@@ -241,23 +278,33 @@ in
     centralPackages = {rustfmt = centralRustfmt;};
   };
   # --- rejections (must all fail) ---
+  # --- a project nested inside another composes; the outer one excludes it ---
+  assert let
+    formatter = nested.evalResult.config.settings.formatter;
+  in
+    nlib.elem "fleet/proj-a/nested/**" formatter.fleet-proj-a-alejandra.excludes
+    && nlib.elem "fleet/proj-a/nested/*.nix" formatter.fleet-proj-a-nested-alejandra.includes;
   assert failReport {
     inherit treefmt-nix pkgs;
     centralPackages = {rustfmt = centralRustfmt;};
     allowedOverrides = allowedTaplo;
     projects = [
       {
-        name = "overlap-parent";
+        name = "dup-one";
         relPath = "fleet/proj-a";
         modules = [fixtureA];
       }
       {
-        name = "overlap-child";
-        relPath = "fleet/proj-a/nested";
-        modules = [fixtureB];
+        name = "dup-two";
+        relPath = "fleet/proj-a";
+        modules = [fixtureA];
       }
     ];
   };
+  # --- a helper module's own binary is aligned, not a project override ---
+  assert failReport (helperArgs // {helperModules = [];});
+  assert nlib.all (formatter: formatter.source == "helper")
+  (nlib.head (scope.compose helperArgs).report.projects).formatters;
   assert failReport {
     inherit treefmt-nix pkgs;
     centralPackages = {rustfmt = centralRustfmt;};

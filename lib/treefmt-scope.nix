@@ -216,6 +216,10 @@
     # unselected project directories. Child coverage is unaffected because
     # these never enter the merged global exclude list.
     rootExtraExcludes ? [],
+    # Helper modules (e.g. harbor language modules) whose formatter commands
+    # count as aligned: a project importing the fleet's own helper gets the
+    # helper's binary, which is the same for every project that imports it.
+    helperModules ? [],
     projects,
   }: let
     # The workspace root entry (relPath "") carries the root policy and
@@ -242,16 +246,12 @@
     (builtins.length (lib.unique slugs) == builtins.length slugs)
     "treefmt-scope: relPath slug collision (e.g. a/b vs a-b, or a project named root)"; true;
 
-    _overlapCheck = assert lib.assertMsg (lib.all (project:
-      !(lib.any (other:
-        other.relPath
-        != project.relPath
-        && other.relPath != ""
-        && project.relPath != ""
-        && nestsUnder other.relPath project.relPath)
-      normalized))
-    normalized)
-    "treefmt-scope: overlapping project roots (duplicate or nested relPath)"; true;
+    # A project nested inside another (a submodule component inside its
+    # superproject) is allowed: the outer project's formatters exclude it,
+    # exactly as the root entry excludes every child.
+    _overlapCheck = assert lib.assertMsg
+    (builtins.length (lib.unique childRelPaths) == builtins.length childRelPaths)
+    "treefmt-scope: duplicate project roots"; true;
 
     scopedOne = project: let
       first = evalProject treefmt-nix pkgs project [];
@@ -274,15 +274,21 @@
       # so child coverage is unaffected. The same holds for rootExtraExcludes
       # (unselected subtrees): also per-formatter, never merged globally,
       # otherwise a root exclusion would suppress child rules.
-      childExcludes =
-        lib.optionals (project.isRoot or false)
-        (map (child: "${child}/**") childRelPaths);
+      nestedChildren =
+        if project.isRoot or false
+        then childRelPaths
+        else lib.filter (child: child != project.relPath && nestsUnder project.relPath child) childRelPaths;
+      # An outer project's own excludes may cover a nested child (harbor
+      # excludes components/**); kept per-formatter like the root's, they
+      # never suppress the child's rules.
+      ownExcludesPerFormatter = (project.isRoot or false) || nestedChildren != [];
+      childExcludes = map (child: "${child}/**") nestedChildren;
       rootExcludes = lib.optionals (project.isRoot or false) rootExtraExcludes;
       # The root entry's own excludes join its formatter excludes as well:
       # nothing from the root policy may enter the merged global exclude
       # list, where it would suppress child rules (e.g. a bare `*.lock`).
       rootOwnExcludes =
-        if project.isRoot or false
+        if ownExcludesPerFormatter
         then lib.concatMap (scopePatterns project.relPath) (settings.excludes or [])
         else [];
       scopedRooted = lib.mapAttrs (_: formatter:
@@ -304,7 +310,7 @@
           # defaults globally, so each project's opt-out survives exactly.
           # The root entry contributes no global excludes (see above).
           settings.excludes =
-            if project.isRoot or false
+            if ownExcludesPerFormatter
             then []
             else lib.concatMap (scopePatterns project.relPath) (settings.excludes or []);
         };
@@ -347,6 +353,15 @@
       (name: package: referenceCommand treefmt-nix pkgs name package)
       centralPackages;
 
+    helperCommands = lib.zipAttrs (map (module:
+      lib.mapAttrs (_: formatter: formatter.command or null)
+      ((treefmt-nix.lib.evalModule pkgs {
+          imports = [module];
+          projectRootFile = "flake.nix";
+        }).config.settings.formatter or {
+        }))
+    helperModules);
+
     # A centrally pinned tool must equal the central reference exactly.
     # There is no fallback to the shared default: a different binary is a
     # divergence even when it happens to match another known version.
@@ -360,6 +375,8 @@
         )
       else if baselines.${tool} or null != null && command == baselines.${tool}
       then "shared-pkgs"
+      else if builtins.elem command (helperCommands.${tool} or [])
+      then "helper"
       else "project-override";
 
     report = {
