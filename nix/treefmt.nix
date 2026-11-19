@@ -7,4 +7,6 @@
 {...}: {
   imports = [./treefmt/nix.nix ./treefmt/toml.nix];
   projectRootFile = "flake.nix";
+  # Templates and byte-sensitive test data retain their source policy.
+  settings.excludes = ["templates/**" "tests/fixtures/**"];
 }
