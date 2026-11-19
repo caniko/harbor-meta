@@ -18,7 +18,12 @@ in
   assert root.lib.docs.marker == "projects";
   assert root.lib.blockchain.solana.marker == "solana";
   assert !(root.lib ? projects) && !(root.lib ? solana);
-  assert root.treefmtModules == {core-fmt = "core"; python-fmt = "python"; projects-fmt = "projects"; solana-fmt = "solana";};
+  assert root.treefmtModules
+  == {
+    core-fmt = "core";
+    python-fmt = "python";
+    projects-fmt = "projects";
+    solana-fmt = "solana";
+  };
   assert root.templates.python-default == "python";
-  assert root.packages.x86_64-linux.solana-tool == "solana";
-    true
+  assert root.packages.x86_64-linux.solana-tool == "solana"; true

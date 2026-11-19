@@ -84,6 +84,7 @@
             nixDirenv = self.packages.${system}.nix-direnv;
           }
           // {
+            formatting = treefmt.config.build.check self;
             formatter-policy = import ./checks/formatter-policy.nix {
               inherit pkgs;
               inherit (self) lib;
