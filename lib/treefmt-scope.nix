@@ -248,10 +248,8 @@
 
     # A project nested inside another (a submodule component inside its
     # superproject) is allowed: the outer project's formatters exclude it,
-    # exactly as the root entry excludes every child.
-    _overlapCheck = assert lib.assertMsg
-    (builtins.length (lib.unique childRelPaths) == builtins.length childRelPaths)
-    "treefmt-scope: duplicate project roots"; true;
+    # exactly as the root entry excludes every child. Duplicate roots share a
+    # slug, so _slugCheck refuses them.
 
     scopedOne = project: let
       first = evalProject treefmt-nix pkgs project [];
@@ -325,7 +323,7 @@
           formatters;
       };
 
-    scoped = builtins.seq _oneRoot (builtins.seq _slugCheck (builtins.seq _overlapCheck (map scopedOne normalized)));
+    scoped = builtins.seq _oneRoot (builtins.seq _slugCheck (map scopedOne normalized));
 
     evalResult = treefmt-nix.lib.evalModule pkgs {
       imports =
@@ -426,9 +424,9 @@
     _divergenceCheck = assert lib.assertMsg (divergences == [])
     "treefmt-scope: formatter binaries diverge from the aligned toolchain (add explicit allowedOverrides to tolerate): ${builtins.toJSON divergences}"; true;
 
-    _force = builtins.seq _oneRoot (builtins.seq _slugCheck (builtins.seq _overlapCheck
+    _force = builtins.seq _oneRoot (builtins.seq _slugCheck
       (builtins.seq _finalNameCheck (builtins.seq _relativeCheck (builtins.seq _divergenceCheck
-            (builtins.deepSeq (map (entry: entry.formatterNames) scoped) true))))));
+            (builtins.deepSeq (map (entry: entry.formatterNames) scoped) true)))));
   in
     builtins.seq _force {inherit evalResult report;};
 in {
