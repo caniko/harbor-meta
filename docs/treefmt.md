@@ -37,7 +37,7 @@ let
       inputs.harbor-js.treefmtModules.javascript
     ];
     projectRootFile = "flake.nix";
-    settings.global.excludes = ["generated/**"];
+    settings.excludes = ["generated/**"];
     programs.rustfmt.package = toolchain.rustToolchain;
     programs.rustfmt.edition = "2024";
   };
