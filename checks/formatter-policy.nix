@@ -29,13 +29,12 @@
   blanket = evaluate (bashMap // {"*" = "deny";});
 in
   assert fixtures.ok;
-  assert pkgs.lib.assertMsg (valid.report.uncovered == [] && valid.report.unattributable == [])
+  assert pkgs.lib.assertMsg (valid.report.uncovered == [] && valid.report.unattributable == [] && valid.report.unexpectedDenies == [])
   "formatter-policy: ${builtins.toJSON valid.report}";
-  assert valid.report.envTwinNecessary && valid.report.pathTwinNecessary;
   assert missing.report.uncovered != [] && missing.report.unattributable == [];
   assert permissive.report.nonDeny == ["alejandra *"];
   assert blanket.report.unattributable != [];
-  assert !blanket.report.envTwinNecessary && !blanket.report.pathTwinNecessary;
+  assert blanket.report.unexpectedDenies != [];
     pkgs.runCommand "formatter-policy" {
       fixtureReport = builtins.toJSON fixtures.report;
       coverageReport = builtins.toJSON valid.report;

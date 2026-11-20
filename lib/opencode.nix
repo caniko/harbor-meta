@@ -5,9 +5,8 @@
   # `lsp = {}` (the default) renders a policy-only config: the format
   # permissions without any `lsp` block. A non-empty `lsp` is merged in
   # verbatim. `formatPermissions` toggles the deny fragment,
-  # `extraFormatDenies` appends project-local patterns (the same twin
-  # expansion applies to them), and `storePathTwins` gates the
-  # `/nix/store/*/bin/…` and `./result/bin/…` variants. The
+  # `extraFormatDenies` appends project-local patterns (also expanded),
+  # and `storePathTwins` gates the `./result/bin/…` variants. The
   # `formatPolicy.marker` identity key is written unconditionally so
   # harbor-opencode can always recognise its own output.
   mkConfig = {

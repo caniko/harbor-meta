@@ -554,6 +554,8 @@ in
         openpencil = false;
       });
       withExtra = builtins.toJSON (lib.opencode.mkConfig {extraFormatDenies = ["myfmt *"];});
+      denyKeys = builtins.attrNames (lib.opencode.mkConfig {}).permission.bash;
+      matchesDeny = command: builtins.any (pattern: match pattern command) denyKeys;
       withoutPolicy = builtins.toJSON (lib.opencode.mkConfig {formatPermissions = false;});
       lspJson = builtins.toJSON (lib.opencode.mkConfig {lsp = fixtureLsp;});
 
@@ -583,8 +585,7 @@ in
     in
       # Registry shape: every base pattern starts with a literal command name.
       # A broad glob like `*fmt *` (or a wildcard-bearing first token) would
-      # deny unrelated commands; the env/store twins are generated, never
-      # registered by hand.
+      # deny unrelated commands.
       assert builtins.all (pattern: !(pkgs.lib.hasPrefix "*" pattern)) raw;
       assert builtins.all (pattern: !(pkgs.lib.hasInfix "*" (firstToken pattern))) raw;
       assert builtins.length raw == builtins.length (pkgs.lib.unique raw);
@@ -592,18 +593,16 @@ in
       # docs/treefmt.md's Agent Formatter Policy table.
       assert builtins.all (pattern: pkgs.lib.hasInfix pattern docs) fp.patterns;
       # Glob -> POSIX replay of the deployed matcher semantics
-      # (caniko/opencode@f18083c78e packages/core/src/util/wildcard.ts:
+      # (upstream OpenCode packages/core/src/util/wildcard.ts:
       # escape ERE metachars, `*` -> `.*`, trailing ` .*` -> `( .*)?`,
       # anchored full match).
       assert match "alejandra *" "alejandra --check .";
       assert match "alejandra *" "alejandra";
       assert !(match "alejandra *" "alejandrafmt --check .");
       assert !(match "alejandra *" "FOO=1 alejandra --check .");
-      assert match "*=* alejandra *" "FOO=1 alejandra --check .";
-      assert !(match "*=* alejandra *" "alejandra --check .");
-      assert match "/nix/store/*/bin/alejandra *" "/nix/store/abc123-alejandra/bin/alejandra --check .";
-      assert !(match "/nix/store/*/bin/alejandra *" "./result/bin/alejandra --check .");
       assert match "./result/bin/alejandra *" "./result/bin/alejandra --check .";
+      assert !(matchesDeny ''git commit -m "a=b prettier x"'');
+      assert !(matchesDeny ''/nix/store/abc-git/bin/git commit -m "/bin/prettier x"'');
       assert match "cargo fmt *" "cargo fmt";
       assert !(match "cargo fmt *" "cargo build --release");
       assert match "shfmt -d *" "shfmt -d ./x.sh";
@@ -618,7 +617,7 @@ in
       # cover it (no space after `statix`), so the registry owns both.
       assert match "statix-fix *" "statix-fix";
       assert !(match "statix *" "statix-fix");
-      assert match "/nix/store/*/bin/statix-fix *" "/nix/store/abc-statix-fix/bin/statix-fix";
+      assert match "./result/bin/statix-fix *" "./result/bin/statix-fix";
       # Rendered shapes: policy-only has no lsp block and carries the deny
       # fragment + identity marker; explicit defaults render identically
       # to the implicit ones; profile lsp blocks ride along; no allow
@@ -631,14 +630,15 @@ in
       assert pkgs.lib.hasInfix "\"permission\"" policyOnly;
       assert pkgs.lib.hasInfix "\"${marker}\":\"${markerValue}\"" policyOnly;
       assert pkgs.lib.hasInfix "\"alejandra *\":\"deny\"" policyOnly;
-      assert pkgs.lib.hasInfix "\"*=* alejandra *\":\"deny\"" policyOnly;
-      assert pkgs.lib.hasInfix "\"/nix/store/*/bin/alejandra *\":\"deny\"" policyOnly;
+      assert builtins.elem "./result/bin/alejandra *" denyKeys;
+      assert builtins.all (key: !(pkgs.lib.hasPrefix "*" key) && !(pkgs.lib.hasPrefix "/nix/store/*/" key)) denyKeys;
+      assert fp.expandPattern false "alejandra *" == ["alejandra *"];
       assert !(pkgs.lib.hasInfix ":\"allow\"" policyOnly);
       assert !(pkgs.lib.hasInfix "\"*\":\"deny\"" policyOnly);
       assert pkgs.lib.hasInfix "\"lsp\"" lspJson;
       assert pkgs.lib.hasInfix "\"fixture-alpha-lsp\"" lspJson;
       assert pkgs.lib.hasInfix "\"myfmt *\":\"deny\"" withExtra;
-      assert pkgs.lib.hasInfix "\"*=* myfmt *\":\"deny\"" withExtra;
+      assert pkgs.lib.hasInfix "\"./result/bin/myfmt *\":\"deny\"" withExtra;
       assert !(pkgs.lib.hasInfix "\"permission\"" withoutPolicy);
       assert pkgs.lib.hasInfix "\"${marker}\":\"${markerValue}\"" withoutPolicy;
       # The kind-based config API is gone: `kind` is not a parameter, so
@@ -672,7 +672,7 @@ in
         pkgs.lib.concatMapStringsSep "\n" (pattern: ''
           grep -qF '"${pattern}":"deny"' lsp.json
           grep -qF '"${pattern}":"deny"' none.json
-          grep -qF '"*=* ${pattern}":"deny"' lsp.json
+           grep -qF '"./result/bin/${pattern}":"deny"' lsp.json
         '')
         fp.patterns;
     in

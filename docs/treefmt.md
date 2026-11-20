@@ -155,10 +155,10 @@ alphabet; a matching deny is also checked before any session "always allow"
 approval. Unmatched commands fall through to `ask`, which is why the fragment
 has no `"*": "deny"` or `"*": "ask"` catch-all.
 
-Each pattern is rendered bare, with an `*=* ` environment prefix (the
-deployed matcher has no dedicated assignment parser, so the prefix must be
-spelled out), and — unless `storePathTwins = false` — through
-`/nix/store/*/bin/…` and `./result/bin/…`, both plain and `*=* `-prefixed.
+Each pattern is rendered bare and — unless `storePathTwins = false` — with a
+literal `./result/bin/` prefix. There are no env or wildcard store-path
+variants: OpenCode matches the whole command, so those wildcards can match
+unrelated commands that only mention a formatter in their arguments.
 The `ruff check *--fix*` rule is argument-aware: a plain `ruff check .` lint
 stays allowed. Multi-purpose tools are denied only at their formatting
 subcommand, so build, test, plan, and lint invocations are unaffected.
