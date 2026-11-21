@@ -86,7 +86,11 @@
         "shfmt *"
         "shfmt -d *"
       ];
-      source = "root policy (agent_safety allows shfmt -d; treefmt --fail-on-change is the sanctioned path)";
+      source = "harbor-meta treefmtModules.shell (agent_safety allows shfmt -d; treefmt --fail-on-change is the sanctioned path)";
+    }
+    {
+      patterns = ["xmllint *--format*"];
+      source = "harbor-meta treefmtModules.svg (xmllint --format; validation stays allowed)";
     }
     {
       patterns = [

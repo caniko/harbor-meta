@@ -607,6 +607,8 @@ in
       assert match "cargo fmt *" "cargo fmt";
       assert !(match "cargo fmt *" "cargo build --release");
       assert match "shfmt -d *" "shfmt -d ./x.sh";
+      assert match "xmllint *--format*" "xmllint --format a.svg --output a.svg";
+      assert !(match "xmllint *--format*" "xmllint --noout a.svg");
       assert match "ruff check *--fix*" "ruff check --fix .";
       assert match "ruff check *--fix*" "ruff check src --fix";
       assert !(match "ruff check *--fix*" "ruff check .");

@@ -33,6 +33,9 @@
         treefmtModules = {
           nix = ./nix/treefmt/nix.nix;
           toml = ./nix/treefmt/toml.nix;
+          markdown = ./nix/treefmt/markdown.nix;
+          shell = ./nix/treefmt/shell.nix;
+          svg = ./nix/treefmt/svg.nix;
         };
         templates.polyglot = {
           path = ./templates/polyglot;

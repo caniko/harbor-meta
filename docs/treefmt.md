@@ -8,6 +8,9 @@ a project root, install toolchain overlays, or exclude consumer directories.
 | -------------- | --------------------------- | ----------------------------- |
 | harbor-meta    | `treefmtModules.nix`        | Alejandra                     |
 | harbor-meta    | `treefmtModules.toml`       | Taplo                         |
+| harbor-meta    | `treefmtModules.markdown`   | Prettier for Markdown         |
+| harbor-meta    | `treefmtModules.shell`      | shfmt                         |
+| harbor-meta    | `treefmtModules.svg`        | xmllint `--format` for SVG    |
 | harbor-rs      | `treefmtModules.rust`       | rustfmt                       |
 | harbor-js      | `treefmtModules.javascript` | Prettier for JS, TS, and JSON |
 | harbor-py      | `treefmtModules.python`     | Ruff format, not lint/fix     |
@@ -187,8 +190,9 @@ subcommand, so build, test, plan, and lint invocations are unaffected.
 | `statix *`             | fleet treefmt programs (canix-toolbelt `flake-modules/formatters.nix`)              |
 | `statix-fix *`         | fleet treefmt programs (treefmt invokes statix via the `statix-fix` wrapper binary) |
 | `terraform fmt *`      | fleet treefmt programs (canix-toolbelt `flake-modules/formatters.nix`)              |
-| `shfmt *`              | root policy (`agent_safety.nix`; treefmt `--fail-on-change` is the gate)            |
-| `shfmt -d *`           | root policy (the globally allowed read-only shape)                                  |
+| `shfmt *`              | harbor-meta `treefmtModules.shell` (treefmt `--fail-on-change` is the gate)         |
+| `shfmt -d *`           | harbor-meta `treefmtModules.shell` (the globally allowed read-only shape)           |
+| `xmllint *--format*`   | harbor-meta `treefmtModules.svg` (validation without `--format` stays allowed)      |
 | `tofu fmt *`           | root policy (OpenTofu formatting)                                                   |
 | `go fmt *`             | root policy (Go formatting)                                                         |
 | `nix fmt *`            | root policy (`nix fmt` realises arbitrary flake outputs)                            |

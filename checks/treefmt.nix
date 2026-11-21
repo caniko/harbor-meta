@@ -22,6 +22,9 @@
 in
   assert builtins.attrNames nixOnly.settings.formatter == ["alejandra"];
   assert builtins.attrNames tomlOnly.settings.formatter == ["taplo"];
+  assert builtins.attrNames (treefmt-nix.lib.evalModule pkgs {imports = [modules.markdown];}).config.settings.formatter == ["prettier"];
+  assert builtins.attrNames (treefmt-nix.lib.evalModule pkgs {imports = [modules.shell];}).config.settings.formatter == ["shfmt"];
+  assert builtins.attrNames (treefmt-nix.lib.evalModule pkgs {imports = [modules.svg];}).config.settings.formatter == ["xmllint"];
   assert composed.settings == reversed.settings;
     pkgs.runCommand "harbor-meta-treefmt-modules" {
       nativeBuildInputs = [composed.build.wrapper];

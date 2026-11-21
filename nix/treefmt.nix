@@ -5,7 +5,7 @@
 # `canix workspace format` discovers a project by this exact path. Keep the
 # formatter set in sync with the exports table in docs/treefmt.md.
 {...}: {
-  imports = [./treefmt/nix.nix ./treefmt/toml.nix];
+  imports = [./treefmt/nix.nix ./treefmt/toml.nix ./treefmt/markdown.nix ./treefmt/shell.nix ./treefmt/svg.nix];
   projectRootFile = "flake.nix";
   # Templates and byte-sensitive test data retain their source policy.
   settings.excludes = ["templates/**" "tests/fixtures/**"];
