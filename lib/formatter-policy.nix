@@ -79,8 +79,7 @@
     denyKeys = builtins.attrNames bashMap;
     nonDenyKeys = lib.filter (key: bashMap.${key} != "deny") denyKeys;
     matchesAny = keys: command: lib.any (key: formatPolicy.matcher.match key command) keys;
-    # Only single-line agent invocations reach the matcher. Nix regex dots
-    # cross newlines; OpenCode's JS matcher does not. Never match wrapper blobs.
+    # Replay the resolved tool invocation, not treefmt's wrapper script.
     programInvocations = name: let
       direct = resolveDirect name formatters.${name};
       inherit (direct) head rest;
@@ -95,10 +94,12 @@
       resultLine = "./result/bin/${base}${suffix}";
     in
       lib.unique (lib.concatMap (line: [line "AGENT_TEST_ENV=1 ${line}"]) [bareLine exactLine storeAliasLine resultLine]);
+    shouldDeny = command: !(lib.hasPrefix "AGENT_TEST_ENV=1 " command || lib.hasPrefix "/nix/store/" command);
     commandsOf = name: map (command: {inherit name command;}) (programInvocations name);
     allCommands = lib.concatMap commandsOf programs;
-    uncoveredCommands = lib.filter (c: !(matchesAny denyKeys c.command)) allCommands;
-    coveredOf = name: lib.filter (command: matchesAny denyKeys command) (programInvocations name);
+    uncoveredCommands = lib.filter (c: shouldDeny c.command && !(matchesAny denyKeys c.command)) allCommands;
+    unexpectedDenies = lib.filter (c: !(shouldDeny c.command) && matchesAny denyKeys c.command) allCommands;
+    coveredOf = name: lib.filter (command: shouldDeny command && matchesAny denyKeys command) (programInvocations name);
     killersOf = name: let
       covered = coveredOf name;
     in
@@ -109,17 +110,9 @@
           !(lib.all (command: matchesAny (lib.subtractLists (lib.unique (formatPolicy.expandPattern true base)) denyKeys) command) covered))
         formatPolicy.patterns;
     unattributable = lib.filter (name: coveredOf name != [] && killersOf name == []) programs;
-    isEnvKey = key: lib.hasPrefix "*=* " key;
-    isPathKey = key: lib.any (prefix: lib.hasPrefix prefix key) ["/nix/store/" "*=* /nix/store/" "./result/bin/" "*=* ./result/bin/"];
-    noEnvKeys = lib.filter (key: !(isEnvKey key)) denyKeys;
-    noPathKeys = lib.filter (key: !(isPathKey key)) denyKeys;
-    envCommands = lib.filter (c: lib.hasPrefix "AGENT_TEST_ENV=1 " c.command) allCommands;
-    pathCommands = lib.filter (c: lib.any (prefix: lib.hasPrefix prefix c.command) ["/nix/store/" "AGENT_TEST_ENV=1 /nix/store/" "./result/bin/" "AGENT_TEST_ENV=1 ./result/bin/"]) allCommands;
-    envUncoveredWithoutTwins = lib.filter (c: !(matchesAny noEnvKeys c.command)) envCommands;
-    pathUncoveredWithoutTwins = lib.filter (c: !(matchesAny noPathKeys c.command)) pathCommands;
     describe = commands: map (c: "${c.name}: ${c.command}") commands;
   in {
-    inherit programInvocations uncoveredCommands unattributable nonDenyKeys envUncoveredWithoutTwins pathUncoveredWithoutTwins;
+    inherit programInvocations uncoveredCommands unattributable nonDenyKeys unexpectedDenies;
     report = {
       formatters = programs;
       commands = lib.genAttrs programs programInvocations;
@@ -127,10 +120,7 @@
       uncovered = describe uncoveredCommands;
       inherit unattributable;
       nonDeny = nonDenyKeys;
-      envTwinNecessary = envUncoveredWithoutTwins != [];
-      pathTwinNecessary = pathUncoveredWithoutTwins != [];
-      envUncoveredWithoutTwins = describe envUncoveredWithoutTwins;
-      pathUncoveredWithoutTwins = describe pathUncoveredWithoutTwins;
+      unexpectedDenies = describe unexpectedDenies;
       mirrorNotes = "all representatives are single-line by construction; wrapper blobs are never matched";
     };
   };

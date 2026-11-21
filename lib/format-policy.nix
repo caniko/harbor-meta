@@ -1,11 +1,8 @@
 {lib}: let
   # Identity marker written into every Harbor-rendered OpenCode config.
   # `harbor-opencode sync` uses it to tell its own output from a hand-written
-  # config and refuses to clobber the latter without --force. opencode's config
-  # normalizer only copies known top-level keys into the effective config
-  # (nativeAtomic whitelist in packages/core/src/config/normalize.ts), so the
-  # unknown marker key is silently ignored at runtime — verified against the
-  # deployed caniko/opencode@f18083c78e (v2.0.12) source.
+  # config and refuses to clobber the latter without --force. Upstream
+  # OpenCode's config normalizer ignores unknown keys such as this marker.
   marker = "harbor.meta/opencode-config";
   markerValue = "1";
 
@@ -104,36 +101,16 @@
 
   patterns = lib.unique (lib.concatMap (entry: entry.patterns) registry);
 
-  # Expand one deny pattern into every key opencode must see. The deployed
-  # matcher (caniko/opencode@f18083c78e) has no dedicated assignment parser —
-  # `packages/core/src/util/bash-permission.ts` does not exist there — so an
-  # environment-prefixed command only matches a pattern that spells out the
-  # `VAR=… ` prefix, and a store/result binary only matches a path pattern.
-  # Each variant is therefore a plain wildcard spelled out verbatim:
-  #
-  #   foo *                 the command itself
-  #   *=* foo *             environment-prefixed invocation
-  #   /nix/store/*/bin/foo *   store wrapper binary (storePathTwins)
-  #   ./result/bin/foo *       nix build result binary (storePathTwins)
-  #   plus both path forms with an environment prefix
+  # Upstream OpenCode's Wildcard.match applies `*` to the whole command,
+  # not just to an assignment or path component. `*=* foo *` and
+  # `/nix/store/*/bin/foo *` can therefore deny unrelated commands whose
+  # arguments mention foo. Emit only the bare pattern and its literal
+  # `./result/bin/` variant; unmatched commands fall through to ask.
   expandPattern = storePathTwins: pattern: let
-    parts = lib.splitString " " pattern;
-    cmd = builtins.head parts;
-    rest = lib.concatStringsSep " " (builtins.tail parts);
-    suffix = lib.optionalString (rest != "") " ${rest}";
-    envPrefixed = lib.hasPrefix "*=* " pattern;
-    # Store/result twins locate the binary as the first token, which only
-    # works for literal command names — never for wildcard-bearing extras.
-    binaryShaped = !(lib.hasInfix "*" cmd) && !(lib.hasInfix "=" cmd);
-    pathForms = lib.optionals (storePathTwins && binaryShaped) [
-      "/nix/store/*/bin/${cmd}${suffix}"
-      "./result/bin/${cmd}${suffix}"
-    ];
+    cmd = builtins.head (lib.splitString " " pattern);
+    binaryShaped = !(lib.hasInfix "*" cmd) && !(lib.hasInfix "?" cmd) && !(lib.hasInfix "=" cmd);
   in
-    [pattern]
-    ++ lib.optionals (!envPrefixed) ["*=* ${pattern}"]
-    ++ pathForms
-    ++ map (form: "*=* ${form}") pathForms;
+    [pattern] ++ lib.optional (storePathTwins && binaryShaped) "./result/bin/${pattern}";
 
   # The `permission.bash` map merged into every rendered config. Every value
   # is "deny"; there is deliberately no `"*": "deny"` (or ask) catch-all —
@@ -151,19 +128,11 @@
       }) (lib.unique (lib.concatMap (expandPattern storePathTwins) (patterns ++ extra)))
     );
 
-  # Mirrors Wildcard.match from packages/core/src/util/wildcard.ts in the
-  # deployed caniko/opencode@f18083c78e (v2.0.12) matcher: backslashes
-  # normalize to `/`, ERE metacharacters are escaped, `*` becomes `.*`,
-  # `?` becomes `.`, a trailing ` .*` becomes `( .*)?`, and the result is
-  # anchored. builtins.match is a full-string POSIX ERE, the same anchoring
-  # opencode gets from `new RegExp("^" + escaped + "$")`. Parity holds only
-  # for single-line inputs: Nix's `.` crosses newlines (measured:
-  # `builtins.match "a.*b" "a\nb"` succeeds) while the deployed JS matcher
-  # without the `s` flag does not. Checks must therefore replay only
-  # single-line representative commands — multi-line shell-wrapper blobs
-  # are resolved to their inner single-line invocation by an explicit
-  # adapter, never matched as a blob. Keep in sync with the deployed
-  # matcher when opencode is bumped.
+  # Replay upstream OpenCode 2.3.2's Wildcard.match
+  # (packages/core/src/util/wildcard.ts) for Linux commands using `/` paths.
+  # Escape metacharacters, translate `*` to `.*` and `?` to `.`, and make a
+  # trailing ` .*` optional. builtins.match anchors the full string like
+  # OpenCode's `new RegExp("^" + escaped + "$", "s")`.
   matcher = rec {
     globToEre = glob: let
       normalized = lib.replaceStrings ["\\"] ["/"] glob;
