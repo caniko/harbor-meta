@@ -30,6 +30,7 @@
         lib = import ./lib {inherit nixpkgs;};
       in {
         inherit lib;
+        nixosModules.shared-data-read-access = ./nix/shared-data-read-access.nix;
         treefmtModules = {
           nix = ./nix/treefmt/nix.nix;
           toml = ./nix/treefmt/toml.nix;
@@ -99,6 +100,12 @@
             };
             standalone-root = assert import ./tests/standalone-root.nix {inherit (self.lib) standaloneRoot;};
               pkgs.writeText "harbor-standalone-root" "ok";
+            shared-data-read-access = assert import ./tests/shared-data-read-access.nix {
+              inherit nixpkgs system;
+              inherit (self) lib;
+              module = self.nixosModules.shared-data-read-access;
+            };
+              pkgs.writeText "harbor-shared-data-read-access" "ok";
             # tests/timezone-consumers.nix spans sibling components; the harbor
             # superproject root owns that check.
             dev-shell-bash = import ./checks/dev-shell-bash.nix {

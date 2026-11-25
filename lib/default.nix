@@ -2,6 +2,11 @@
   nixLib = nixpkgs.lib;
   opencodeEngine = import ./opencode.nix {lib = nixLib;};
 in {
+  inherit
+    (import ./shared-data-read-access.nix {lib = nixLib;})
+    mkSharedDataReadAccessRules
+    mkSharedDataReadAccessConfig
+    ;
   flake = import ./flake.nix {lib = nixLib;};
   timezone = import ./timezone.nix;
   opencode =

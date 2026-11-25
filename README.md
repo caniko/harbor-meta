@@ -36,6 +36,33 @@ Pass `--openpencil` to register the server. The desktop binary must already
 be on PATH. OpenCode code mode (`OPENCODE_EXPERIMENTAL_CODE_MODE`) defers
 MCP schemas behind the `execute` tool.
 
+## Shared data read access
+
+Import `nixosModules.shared-data-read-access` to grant existing NixOS users
+access to shared data without changing file ownership:
+
+```nix
+harbor.sharedDataReadAccess.analytics = {
+  enable = true;
+  group = "data-readers";
+  members = ["analyst"];
+  traversePaths = ["/srv/shared"];
+  readPaths = ["/srv/shared/datasets"];
+};
+```
+
+Paths are absolute literal strings, not globs or systemd specifiers. Traversal
+grants non-recursive read/search on directories; recursive grants read plus
+execute only on directories or already-executable files. Same-path recursive
+grants take precedence within a single call. The
+[tmpfiles ACLs](https://www.freedesktop.org/software/systemd/man/latest/tmpfiles.d.html)
+add or update named group entries without a write bit. An existing ACL mask can
+limit effective access. Files created later need another tmpfiles run unless
+they already inherit a suitable ACL.
+
+Consumers can also use `lib.mkSharedDataReadAccessRules` for just the tmpfiles
+rules or `lib.mkSharedDataReadAccessConfig` for a mergeable NixOS config fragment.
+
 ## Agent shells and validation
 
 For projects using `.envrc` with `use flake .`, agent subprocesses do not
