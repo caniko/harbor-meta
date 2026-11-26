@@ -53,6 +53,10 @@ in {
       nativeBuildInputs = [pkgs.bash pkgs.nix pkgs.coreutils];
     } ''
       test -f ${composed}/existing-hook
+      if grep -n -- 'tail .*--pid' ${direnvrc}; then
+        echo 'A persistent log follower can keep direnv capture open after cancellation' >&2
+        exit 1
+      fi
       mkdir negative positive
       # The unpatched installed output must fail this same regression harness.
       if (cd negative; bash ${./direnv-roots.sh} ${pkgs.nix-direnv}/share/nix-direnv/direnvrc); then
