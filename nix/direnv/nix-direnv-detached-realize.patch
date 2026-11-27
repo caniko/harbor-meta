@@ -97,7 +97,7 @@ diff --git a/share/nix-direnv/direnvrc b/share/nix-direnv/direnvrc
 +  while systemctl --user is-active --quiet "$unit"; do
 +    size=$(@coreutils@/bin/stat -c %s "$tmp_profile.log" 2>/dev/null || echo 0)
 +    if (( size > offset )); then
-+      @coreutils@/bin/tail -c +$((offset + 1)) "$tmp_profile.log" >&2
++      @coreutils@/bin/dd if="$tmp_profile.log" iflag=skip_bytes,count_bytes,fullblock skip="$offset" count="$((size - offset))" status=none >&2
 +      offset=$size
 +    fi
 +    @coreutils@/bin/sleep 1
@@ -105,7 +105,7 @@ diff --git a/share/nix-direnv/direnvrc b/share/nix-direnv/direnvrc
 +  # Print the bytes written between the last read and the unit's exit.
 +  size=$(@coreutils@/bin/stat -c %s "$tmp_profile.log" 2>/dev/null || echo 0)
 +  if (( size > offset )); then
-+    @coreutils@/bin/tail -c +$((offset + 1)) "$tmp_profile.log" >&2
++    @coreutils@/bin/dd if="$tmp_profile.log" iflag=skip_bytes,count_bytes,fullblock skip="$offset" count="$((size - offset))" status=none >&2
 +  fi
 +  local status=
 +  [[ -s "$tmp_profile.status" ]] && read -r status <"$tmp_profile.status"
