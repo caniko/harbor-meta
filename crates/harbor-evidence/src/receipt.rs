@@ -18,14 +18,25 @@ pub fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
 /// With `replace=false`, an existing receipt is never overwritten. Evidence
 /// directories and storage/preservation policy belong to the caller.
 pub fn write_json_atomic(path: &Path, value: &impl Serialize, replace: bool) -> Result<()> {
+    write_atomic(path, replace, |file| {
+        serde_json::to_writer_pretty(&mut *file, value).context("serializing receipt")?;
+        file.write_all(b"\n")?;
+        Ok(())
+    })
+}
+
+pub(crate) fn write_atomic(
+    path: &Path,
+    replace: bool,
+    write: impl FnOnce(&mut File) -> Result<()>,
+) -> Result<()> {
     let parent = path
         .parent()
         .filter(|path| !path.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
     let mut temporary =
         tempfile::NamedTempFile::new_in(parent).context("creating atomic receipt")?;
-    serde_json::to_writer_pretty(temporary.as_file_mut(), value).context("serializing receipt")?;
-    temporary.write_all(b"\n")?;
+    write(temporary.as_file_mut())?;
     temporary.as_file().sync_all()?;
     if replace {
         temporary.persist(path)?;

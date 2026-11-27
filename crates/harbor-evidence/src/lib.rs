@@ -2,6 +2,7 @@
 
 mod artifact;
 pub mod cli;
+pub mod cross_arch;
 pub mod execution;
 mod receipt;
 
